@@ -1,0 +1,13 @@
+{
+  "name": "ChangeWLD",
+  "description": "Convierte tus Worldcoins (WLD) a pesos colombianos de forma rápida y segura.",
+  "url": "https://changewld.app", 
+  "iconUrl": "https://changewld.app/icon.png",
+  "permissions": ["world_id", "wallet"],
+  "redirectUrl": "https://changewld.app/connected",
+  "category": "finance",
+  "developer": {
+    "name": "ChangeWLD Labs",
+    "contact": "soporte@changewld.app"
+  }
+}
