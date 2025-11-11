@@ -21,7 +21,7 @@ function App() {
 
   useEffect(() => {
     axios
-      .get(`${API_BASE}/rate`)
+      .get(`${API_BASE}/api/rate`)
       .then((r) => setRate(r.data))
       .catch(() =>
         Swal.fire("Error", "No se pudo obtener la tasa actual", "error")
@@ -53,7 +53,7 @@ function App() {
         didOpen: () => Swal.showLoading(),
       });
 
-      const res = await axios.post(`${API_BASE}/orders`, {
+      const res = await axios.post(`${API_BASE}/api/orders`, {
         ...form,
         montoCOP,
       });
