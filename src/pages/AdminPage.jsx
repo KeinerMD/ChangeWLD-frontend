@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { API_BASE } from "../apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -11,7 +12,7 @@ function AdminPage() {
   // Cargar órdenes
   const loadOrders = async (p) => {
     try {
-      const res = await axios.get(`/api/orders-admin?pin=${p}`);
+      const res = await axios.get(`${API_BASE}/api/orders-admin?pin=${p}`);
       setOrders(res.data);
       setAuthed(true);
     } catch (err) {
@@ -27,7 +28,7 @@ function AdminPage() {
 
   const handleChangeEstado = async (id, estado) => {
     try {
-      const res = await axios.put(`/api/orders/${id}/estado`, { estado, pin });
+      const res = await axios.put(`${API_BASE}/api/orders/${id}/estado`, { estado, pin });
       if (res.data.ok) {
         Swal.fire({
           title: "✅ Estado actualizado",

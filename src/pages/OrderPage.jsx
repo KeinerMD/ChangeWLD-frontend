@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { API_BASE } from "../apiConfig";
 import Swal from "sweetalert2";
 import { motion } from "framer-motion";
 
@@ -12,7 +13,7 @@ function OrderPage() {
 
   const fetchOrden = async () => {
     try {
-      const res = await axios.get(`/api/orders/${id}`);
+      const res = await axios.get(`${API_BASE}/api/orders/${id}`);
       setOrden(res.data);
       setLoading(false);
     } catch (err) {

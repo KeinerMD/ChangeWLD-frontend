@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { API_BASE } from "./apiConfig";
 import Swal from "sweetalert2";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -20,7 +21,7 @@ function App() {
 
   useEffect(() => {
     axios
-      .get("/api/rate")
+      .get(`${API_BASE}/api/rate`)
       .then((r) => setRate(r.data))
       .catch(() =>
         Swal.fire("Error", "No se pudo obtener la tasa actual", "error")
@@ -52,7 +53,7 @@ function App() {
         didOpen: () => Swal.showLoading(),
       });
 
-      const res = await axios.post("/api/orders", {
+      const res = await axios.post(`${API_BASE}/api/orders`, {
         ...form,
         montoCOP,
       });
