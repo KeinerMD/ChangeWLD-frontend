@@ -1,3 +1,5 @@
-// src/apiConfig.js
+// 🔗 Configuración base de la API — producción + local
 export const API_BASE =
-  import.meta.env.VITE_API_URL || "https://changewld-backend.onrender.com";
+  import.meta.env.MODE === "development"
+    ? "http://localhost:4000"
+    : "https://changewld-backend.onrender.com";
