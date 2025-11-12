@@ -154,7 +154,9 @@ function App() {
     <>
       Tasa actual:{" "}
       <b>
-        {rate.wld_cop_usuario.toLocaleString("es-CO")} COP/WLD
+        {rate && rate.wld_cop_usuario
+  ? `${Number(rate.wld_cop_usuario).toLocaleString("es-CO")} COP/WLD`
+  : "Cargando..."}
       </b>
     </>
   ) : (
@@ -162,14 +164,12 @@ function App() {
   )}
 </p>
           <p className="text-lg font-semibold text-indigo-700">
-            Recibirás:{" "}
-            {rate && form.montoWLD
-              ? Math.round(form.montoWLD * rate.wld_cop_usuario).toLocaleString(
-                  "es-CO"
-                )
-              : 0}{" "}
-            <span className="text-gray-700">COP</span>
-          </p>
+  Recibirás:{" "}
+  {rate && rate.wld_cop_usuario && form.montoWLD
+    ? Math.round(form.montoWLD * Number(rate.wld_cop_usuario)).toLocaleString("es-CO")
+    : 0}{" "}
+  <span className="text-gray-700">COP</span>
+</p>
         </div>
 
         <IDKitWidget
