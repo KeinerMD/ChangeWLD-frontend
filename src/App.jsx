@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { API_BASE } from "./apiConfig";
 import Swal from "sweetalert2";
@@ -19,15 +19,31 @@ function App() {
   const [rate, setRate] = useState(null);
   const navigate = useNavigate();
 
+  // ✅ Obtener la tasa al cargar
   useEffect(() => {
-    axios
-      .get(`${API_BASE}/api/rate`)
-      .then((r) => setRate(r.data))
-      .catch(() =>
-        Swal.fire("Error", "No se pudo obtener la tasa actual", "error")
-      );
+    const fetchRate = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/api/rate`);
+        if (res.data && res.data.ok) {
+          setRate(res.data);
+        } else {
+          Swal.fire("Error", "No se pudo obtener la tasa actual", "error");
+        }
+      } catch (err) {
+        Swal.fire("Error", "No se pudo conectar con el servidor", "error");
+      }
+    };
+    fetchRate();
   }, []);
 
+  // ✅ Calcular el valor que recibirá el usuario (reactivo)
+  const montoCOP = useMemo(() => {
+    const monto = parseFloat(form.montoWLD);
+    if (!rate || !rate.wld_cop_usuario || isNaN(monto)) return 0;
+    return Math.round(monto * rate.wld_cop_usuario);
+  }, [form.montoWLD, rate]);
+
+  // ✅ Crear la orden
   const handleCrearOrden = async () => {
     if (
       !form.nombre ||
@@ -42,10 +58,6 @@ function App() {
     }
 
     try {
-      const montoCOP = rate
-        ? (form.montoWLD * rate.wld_cop_usuario).toFixed(2)
-        : 0;
-
       Swal.fire({
         title: "Procesando orden...",
         text: "Por favor espera unos segundos.",
@@ -60,18 +72,16 @@ function App() {
 
       Swal.close();
 
-      if (res.data && res.data.ok && res.data.orden && res.data.orden.id) {
-        const orden = res.data.orden;
-
+      if (res.data && res.data.ok && res.data.orden) {
         Swal.fire({
           title: "✅ Orden creada",
-          text: `Tu orden #${orden.id} fue registrada exitosamente.`,
+          text: `Tu orden #${res.data.orden.id} fue registrada exitosamente.`,
           icon: "success",
           showConfirmButton: false,
           timer: 1500,
         });
 
-        setTimeout(() => navigate(`/order/${orden.id}`), 1200);
+        setTimeout(() => navigate(`/order/${res.data.orden.id}`), 1200);
         setForm({
           nombre: "",
           correo: "",
@@ -147,51 +157,46 @@ function App() {
           ))}
         </div>
 
-        {/* Resumen */}
+        {/* Resumen dinámico */}
         <div className="mt-6 bg-indigo-50 p-4 rounded-xl text-center">
           <p className="text-sm text-gray-600 mb-1">
-  {rate && rate.ok ? (
-    <>
-      Tasa actual:{" "}
-      <b>
-        {rate && rate.wld_cop_usuario
-  ? `${Number(rate.wld_cop_usuario).toLocaleString("es-CO")} COP/WLD`
-  : "Cargando..."}
-      </b>
-    </>
-  ) : (
-    <span className="text-gray-400">Cargando tasa...</span>
-  )}
-</p>
+            {rate && rate.ok ? (
+              <>
+                Tasa actual:{" "}
+                <b>
+                  {Number(rate.wld_cop_usuario).toLocaleString("es-CO")} COP/WLD
+                </b>
+              </>
+            ) : (
+              <span className="text-gray-400">Cargando tasa...</span>
+            )}
+          </p>
           <p className="text-lg font-semibold text-indigo-700">
-  Recibirás:{" "}
-  {rate && rate.wld_cop_usuario && form.montoWLD
-    ? Math.round(form.montoWLD * Number(rate.wld_cop_usuario)).toLocaleString("es-CO")
-    : 0}{" "}
-  <span className="text-gray-700">COP</span>
-</p>
+            Recibirás: {montoCOP.toLocaleString("es-CO")}{" "}
+            <span className="text-gray-700">COP</span>
+          </p>
         </div>
 
+        {/* Verificación World ID */}
         <IDKitWidget
-  app_id="app_123456789" // tu app_id real desde el panel de Worldcoin Developers
-  action="verify-changeWLD"
-  onSuccess={(result) => console.log("✅ Verificado:", result)}
-  onError={(err) => Swal.fire("Error", "No se pudo verificar identidad", "error")}
-  credential_types={["orb", "phone"]}
-  autoClose
->
-  {({ open }) => (
-    <button
-      onClick={open}
-      className="mt-4 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold"
-    >
-      Verificar con World ID 🌐
-    </button>
-  )}
-</IDKitWidget>
+          app_id="app_123456789" // ⚠️ reemplaza por tu ID real de Worldcoin
+          action="verify-changeWLD"
+          onSuccess={(result) => console.log("✅ Verificado:", result)}
+          onError={() => Swal.fire("Error", "No se pudo verificar identidad", "error")}
+          credential_types={["orb", "phone"]}
+          autoClose
+        >
+          {({ open }) => (
+            <button
+              onClick={open}
+              className="mt-4 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold"
+            >
+              Verificar con World ID 🌐
+            </button>
+          )}
+        </IDKitWidget>
 
-
-        {/* Botón */}
+        {/* Botón Crear */}
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.97 }}
