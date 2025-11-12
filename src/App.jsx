@@ -150,13 +150,17 @@ function App() {
         {/* Resumen */}
         <div className="mt-6 bg-indigo-50 p-4 rounded-xl text-center">
           <p className="text-sm text-gray-600 mb-1">
-            Tasa actual:{" "}
-            <b>
-              {rate
-                ? `${rate.wld_cop_usuario.toLocaleString("es-CO")} COP/WLD`
-                : "Cargando..."}
-            </b>
-          </p>
+  {rate && rate.ok ? (
+    <>
+      Tasa actual:{" "}
+      <b>
+        {rate.wld_cop_usuario.toLocaleString("es-CO")} COP/WLD
+      </b>
+    </>
+  ) : (
+    <span className="text-gray-400">Cargando tasa...</span>
+  )}
+</p>
           <p className="text-lg font-semibold text-indigo-700">
             Recibirás:{" "}
             {rate && form.montoWLD
