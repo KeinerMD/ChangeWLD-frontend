@@ -1,4 +1,4 @@
-// 🔗 Configuración base de la API — producción + local
+// 🔗 Configuración base de la API — producción + desarrollo
 export const API_BASE =
   import.meta.env.MODE === "development"
     ? "http://localhost:4000"
