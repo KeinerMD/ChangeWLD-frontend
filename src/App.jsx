@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { API_BASE } from "./apiConfig";
@@ -11,6 +12,7 @@ function App() {
   const [rate, setRate] = useState(null);
   const [orderId, setOrderId] = useState(null);
   const [orderInfo, setOrderInfo] = useState(null);
+  const [hasShownPaidAlert, setHasShownPaidAlert] = useState(false);
 
   // ========= FORMULARIOS =========
   const [montoWLD, setMontoWLD] = useState("");
@@ -43,6 +45,22 @@ function App() {
 
     return () => clearInterval(interval);
   }, [orderId]);
+
+  // ========= 3) ALERTA CUANDO ESTÉ PAGADA =========
+  useEffect(() => {
+    if (
+      orderInfo &&
+      orderInfo.estado === "pagada" &&
+      !hasShownPaidAlert
+    ) {
+      setHasShownPaidAlert(true);
+      Swal.fire(
+        "✅ Orden pagada",
+        "Tu orden ya fue pagada. Revisa tu cuenta bancaria o billetera.",
+        "success"
+      );
+    }
+  }, [orderInfo, hasShownPaidAlert]);
 
   // ========= ETAPA 1: CONFIRMAR MONTO =========
   const handleStep1 = () => {
@@ -77,7 +95,7 @@ function App() {
     try {
       const res = await axios.post(`${API_BASE}/api/orders`, {
         nombre: bankData.titular,
-        correo: "no-email@changewld.com", // no lo usas ahora, pero backend lo espera
+        correo: "no-email@changewld.com", // placeholder
         banco: bankData.banco,
         titular: bankData.titular,
         numero: bankData.numero,
@@ -90,6 +108,7 @@ function App() {
       if (res.data && res.data.ok && res.data.orden) {
         setOrderId(res.data.orden.id);
         setOrderInfo(res.data.orden);
+        setHasShownPaidAlert(false); // para la nueva orden
         setStep(3);
       } else {
         Swal.fire("Error", "No se pudo crear la orden.", "error");
@@ -168,9 +187,7 @@ function App() {
 
         {/* CONTENIDO POR ETAPA */}
         <AnimatePresence mode="wait">
-          {/* ============================
-              ETAPA 1 — INGRESAR MONTO
-          ============================ */}
+          {/* ========== ETAPA 1 — INGRESAR MONTO ========= */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -199,9 +216,7 @@ function App() {
               </div>
 
               <div className="bg-indigo-50 p-4 rounded-xl text-center border border-indigo-100">
-                <p className="text-xs text-gray-500 mb-1">
-                  Tasa actual:
-                </p>
+                <p className="text-xs text-gray-500 mb-1">Tasa actual:</p>
                 <p className="text-sm font-semibold text-indigo-700 mb-3">
                   {rate && rate.wld_cop_usuario
                     ? `${rate.wld_cop_usuario.toLocaleString(
@@ -222,10 +237,10 @@ function App() {
                 </p>
               </div>
 
-              {/* Verificación opcional World ID */}
+              {/* Verificación World ID (opcional) */}
               <div className="mt-5">
                 <IDKitWidget
-                  app_id="app_123456789" // reemplaza con tu app_id real
+                  app_id="app_123456789" // reemplázalo por tu app_id real
                   action="verify-changeWLD"
                   onSuccess={(result) =>
                     console.log("✅ Verificado con World ID:", result)
@@ -260,92 +275,88 @@ function App() {
             </motion.div>
           )}
 
-          {/* ============================
-    ETAPA 2 — DATOS BANCARIOS
-============================ */}
-{step === 2 && (
-  <motion.div
-    key="step2"
-    initial={{ opacity: 0, x: 40 }}
-    animate={{ opacity: 1, x: 0 }}
-    exit={{ opacity: 0, x: -40 }}
-    transition={{ duration: 0.25 }}
-  >
-    <p className="text-center text-gray-500 mb-4">
-      Ahora dinos a dónde te enviamos los pesos.
-    </p>
+          {/* ========== ETAPA 2 — DATOS BANCARIOS ========= */}
+          {step === 2 && (
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -40 }}
+              transition={{ duration: 0.25 }}
+            >
+              <p className="text-center text-gray-500 mb-4">
+                Ahora dinos a dónde te enviamos los pesos.
+              </p>
 
-    <div className="mb-3">
-      <label className="block text-sm text-gray-600 mb-1">
-      </label>
-      <BankSelector
-        value={bankData.banco}
-        onChange={(b) => setBankData({ ...bankData, banco: b })}
-      />
-    </div>
+              <div className="mb-3">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Banco o billetera
+                </label>
+                <BankSelector
+                  value={bankData.banco}
+                  onChange={(b) => setBankData({ ...bankData, banco: b })}
+                />
+              </div>
 
-    <div className="mb-3">
-      <label className="block text-sm text-gray-600 mb-1">
-        Titular de la cuenta
-      </label>
-      <input
-        type="text"
-        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-        placeholder="Nombre del titular"
-        value={bankData.titular}
-        onChange={(e) =>
-          setBankData({ ...bankData, titular: e.target.value })
-        }
-      />
-    </div>
+              <div className="mb-3">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Titular de la cuenta
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Nombre del titular"
+                  value={bankData.titular}
+                  onChange={(e) =>
+                    setBankData({ ...bankData, titular: e.target.value })
+                  }
+                />
+              </div>
 
-    <div className="mb-1">
-      <label className="block text-sm text-gray-600 mb-1">
-        Número de cuenta / Nequi / Bre-B
-      </label>
-      <input
-        type="text"
-        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-        placeholder="Ej: 3001234567"
-        value={bankData.numero}
-        onChange={(e) =>
-          setBankData({ ...bankData, numero: e.target.value })
-        }
-      />
-    </div>
+              <div className="mb-1">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Número de cuenta / Nequi / Bre-B
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Ej: 3001234567"
+                  value={bankData.numero}
+                  onChange={(e) =>
+                    setBankData({ ...bankData, numero: e.target.value })
+                  }
+                />
+              </div>
 
-    <div className="text-xs text-gray-400 mt-2 mb-3">
-      Monto a recibir:{" "}
-      <span className="font-semibold text-indigo-600">
-        {montoWLD && rate && rate.wld_cop_usuario
-          ? `${formatCOP(
-              Number(montoWLD) * Number(rate.wld_cop_usuario)
-            )} COP`
-          : "0 COP"}
-      </span>
-    </div>
+              <div className="text-xs text-gray-400 mt-2 mb-3">
+                Monto a recibir:{" "}
+                <span className="font-semibold text-indigo-600">
+                  {montoWLD && rate && rate.wld_cop_usuario
+                    ? `${formatCOP(
+                        Number(montoWLD) * Number(rate.wld_cop_usuario)
+                      )} COP`
+                    : "0 COP"}
+                </span>
+              </div>
 
-    <div className="flex gap-3 mt-4">
-      <button
-        onClick={() => setStep(1)}
-        className="w-1/3 border border-gray-300 text-gray-600 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
-      >
-        Volver
-      </button>
-      <button
-        onClick={handleStep2}
-        className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-indigo-700 transition"
-      >
-        Confirmar y crear orden
-      </button>
-    </div>
-  </motion.div>
-)}
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => setStep(1)}
+                  className="w-1/3 border border-gray-300 text-gray-600 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
+                >
+                  Volver
+                </button>
+                <button
+                  onClick={handleStep2}
+                  className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-indigo-700 transition"
+                >
+                  Confirmar y crear orden
+                </button>
+              </div>
+            </motion.div>
+          )}
 
-
-          {/* ============================
-              ETAPA 3 — ESTADO DE LA ORDEN
-          ============================ */}
+          {/* ========== ETAPA 3 — ESTADO DE LA ORDEN ========= */}
           {step === 3 && (
             <motion.div
               key="step3"
@@ -399,6 +410,7 @@ function App() {
                   setBankData({ banco: "", titular: "", numero: "" });
                   setOrderId(null);
                   setOrderInfo(null);
+                  setHasShownPaidAlert(false);
                 }}
                 className="mt-2 w-full border border-gray-300 text-gray-700 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
               >
