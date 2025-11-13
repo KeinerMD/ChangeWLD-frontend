@@ -24,7 +24,6 @@ export default function BankSelector({ value, onChange }) {
 
   return (
     <div className="relative w-full">
-      <p className="text-sm text-gray-600 mb-1 px-1">Banco o billetera</p>
 
       {/* Caja principal */}
       <button
