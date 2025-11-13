@@ -14,6 +14,10 @@ function App() {
   const [orderInfo, setOrderInfo] = useState(null);
   const [hasShownPaidAlert, setHasShownPaidAlert] = useState(false);
 
+  // 🔒 Verificación World ID
+  const [isVerified, setIsVerified] = useState(false);
+  const [verificationNullifier, setVerificationNullifier] = useState(null);
+
   // ========= FORMULARIOS =========
   const [montoWLD, setMontoWLD] = useState("");
   const [bankData, setBankData] = useState({
@@ -48,15 +52,11 @@ function App() {
 
   // ========= 3) ALERTA CUANDO ESTÉ PAGADA =========
   useEffect(() => {
-    if (
-      orderInfo &&
-      orderInfo.estado === "pagada" &&
-      !hasShownPaidAlert
-    ) {
+    if (orderInfo && orderInfo.estado === "pagada" && !hasShownPaidAlert) {
       setHasShownPaidAlert(true);
       Swal.fire(
         "✅ Orden pagada",
-        "Tu orden ya fue pagada. Revisa tu cuenta bancaria o billetera.",
+        "Tu orden ya fue pagada. Revisa tu cuenta bancaria.",
         "success"
       );
     }
@@ -68,6 +68,16 @@ function App() {
       Swal.fire("Monto inválido", "Ingresa un valor válido en WLD.", "warning");
       return;
     }
+
+    if (!isVerified) {
+      Swal.fire(
+        "Verificación requerida",
+        "Debes verificar tu identidad con World ID antes de continuar.",
+        "warning"
+      );
+      return;
+    }
+
     setStep(2);
   };
 
@@ -78,40 +88,45 @@ function App() {
       return;
     }
 
-    if (!rate || !rate.wld_cop_usuario) {
-      Swal.fire("Error", "La tasa aún no está disponible.", "error");
+    if (!verificationNullifier) {
+      Swal.fire(
+        "Error",
+        "No se detectó la verificación World ID. Intenta nuevamente.",
+        "error"
+      );
       return;
     }
 
     Swal.fire({
       title: "Creando orden...",
-      text: "Por favor espera unos segundos.",
+      text: "Por favor espera un momento.",
       allowOutsideClick: false,
       didOpen: () => Swal.showLoading(),
     });
 
-    const montoCOP = Number(montoWLD) * Number(rate.wld_cop_usuario);
+    const montoCOP = Number(montoWLD) * Number(rate?.wld_cop_usuario || 0);
 
     try {
       const res = await axios.post(`${API_BASE}/api/orders`, {
         nombre: bankData.titular,
-        correo: "no-email@changewld.com", // placeholder
+        correo: "no-email@changewld.com",
         banco: bankData.banco,
         titular: bankData.titular,
         numero: bankData.numero,
         montoWLD: Number(montoWLD),
         montoCOP: Number(montoCOP.toFixed(2)),
+        verified: isVerified,
+        nullifier: verificationNullifier,
       });
 
       Swal.close();
 
-      if (res.data && res.data.ok && res.data.orden) {
+      if (res.data?.ok) {
         setOrderId(res.data.orden.id);
         setOrderInfo(res.data.orden);
-        setHasShownPaidAlert(false); // para la nueva orden
         setStep(3);
       } else {
-        Swal.fire("Error", "No se pudo crear la orden.", "error");
+        Swal.fire("Error", res.data?.error || "No se pudo crear la orden.", "error");
       }
     } catch (err) {
       Swal.close();
@@ -119,11 +134,9 @@ function App() {
     }
   };
 
-  // ========= FORMATEADORES =========
+  // ========= FORMATEADOR =========
   const formatCOP = (n) =>
-    Number(n || 0).toLocaleString("es-CO", {
-      maximumFractionDigits: 0,
-    });
+    Number(n || 0).toLocaleString("es-CO", { maximumFractionDigits: 0 });
 
   const currentStatusLabel = (estado) => {
     switch (estado) {
@@ -152,11 +165,9 @@ function App() {
       >
         {/* HEADER */}
         <div className="mb-5 text-center">
-          <h1 className="text-3xl font-bold text-indigo-700 mb-1">
-            💱 ChangeWLD
-          </h1>
+          <h1 className="text-3xl font-bold text-indigo-700 mb-1">💱 ChangeWLD</h1>
           <p className="text-xs text-gray-400 uppercase tracking-widest">
-            Cambia tus WLD a pesos colombianos
+            Cambia tus WLD a COP de forma segura
           </p>
         </div>
 
@@ -165,8 +176,7 @@ function App() {
           {[1, 2, 3].map((s) => (
             <div key={s} className="flex-1 flex flex-col items-center">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
-                ${
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                   step === s
                     ? "bg-indigo-600 text-white"
                     : step > s
@@ -179,15 +189,17 @@ function App() {
               <p className="text-[10px] text-gray-500 mt-1">
                 {s === 1 && "Monto"}
                 {s === 2 && "Datos Bancarios"}
-                {s === 3 && "Estado de Orden"}
+                {s === 3 && "Estado"}
               </p>
             </div>
           ))}
         </div>
 
-        {/* CONTENIDO POR ETAPA */}
+        {/* CONTENIDO */}
         <AnimatePresence mode="wait">
-          {/* ========== ETAPA 1 — INGRESAR MONTO ========= */}
+          {/* ============================
+              ETAPA 1 — MONTO + WORLD ID
+          ============================ */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -197,85 +209,99 @@ function App() {
               transition={{ duration: 0.25 }}
             >
               <p className="text-center text-gray-500 mb-4">
-                ¿Cuántos <b>WLD</b> tienes disponibles para cambiar?
+                Ingresa cuántos <b>WLD</b> quieres cambiar.
               </p>
 
               <div className="mb-4">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Monto en WLD
-                </label>
+                <label className="block text-sm text-gray-600 mb-1">Monto en WLD</label>
                 <input
                   type="number"
                   min="0"
                   step="0.0001"
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3"
                   placeholder="Ej: 12.5"
                   value={montoWLD}
                   onChange={(e) => setMontoWLD(e.target.value)}
                 />
               </div>
 
-              <div className="bg-indigo-50 p-4 rounded-xl text-center border border-indigo-100">
-                <p className="text-xs text-gray-500 mb-1">Tasa actual:</p>
-                <p className="text-sm font-semibold text-indigo-700 mb-3">
-                  {rate && rate.wld_cop_usuario
-                    ? `${rate.wld_cop_usuario.toLocaleString(
-                        "es-CO"
-                      )} COP por 1 WLD`
-                    : "Cargando tasa..."}
+              <div className="bg-indigo-50 p-4 rounded-xl text-center">
+                <p className="text-sm text-gray-600">Tasa actual:</p>
+                <p className="text-lg font-bold text-indigo-700">
+                  {rate?.wld_cop_usuario
+                    ? `${rate.wld_cop_usuario.toLocaleString("es-CO")} COP por 1 WLD`
+                    : "Cargando..."}
                 </p>
 
-                <p className="text-xs text-gray-500 mb-1">
-                  Recibirás aproximadamente:
-                </p>
+                <p className="text-xs text-gray-500 mt-2">Recibirías:</p>
                 <p className="text-2xl font-extrabold text-indigo-700">
-                  {montoWLD && rate && rate.wld_cop_usuario
-                    ? `${formatCOP(
-                        Number(montoWLD) * Number(rate.wld_cop_usuario)
-                      )} COP`
+                  {montoWLD && rate?.wld_cop_usuario
+                    ? `${formatCOP(montoWLD * rate.wld_cop_usuario)} COP`
                     : "0 COP"}
                 </p>
               </div>
 
-              {/* Verificación World ID (opcional) */}
+              {/* WORLD ID */}
               <div className="mt-5">
                 <IDKitWidget
-  app_id="app_fc346e88f08ed686748d6414d965f99"
-  action="verify-changewld"
-  verification_level="device" 
-  onSuccess={(result) => {
-    console.log("✅ Verificación exitosa:", result);
-    Swal.fire("Verificado", "Tu identidad fue verificada exitosamente.", "success");
-  }}
-  onError={(err) => {
-    console.error(err);
-    Swal.fire("Error", "No se pudo verificar tu identidad.", "error");
-  }}
-  credential_types={["orb", "phone"]}
-  autoClose
->
-  {({ open }) => (
-    <button
-      onClick={open}
-      className="w-full text-xs mb-2 border border-indigo-200 text-indigo-600 py-2 rounded-xl font-semibold hover:bg-indigo-50 transition"
-    >
-      Verificar identidad con World ID 🌐
-    </button>
-  )}
-</IDKitWidget>
+                  app_id="app_fc346e88f08ed686748d6414d965f99"
+                  action="verify-changewld"
+                  verification_level="device"
+                  onSuccess={async (result) => {
+                    try {
+                      const resp = await axios.post(
+                        `${API_BASE}/api/verify-world-id`,
+                        {
+                          proof: result.proof,
+                          merkle_root: result.merkle_root,
+                          nullifier_hash: result.nullifier_hash,
+                          verification_level: result.verification_level,
+                          action: "verify-changewld",
+                        }
+                      );
 
+                      if (resp.data?.ok) {
+                        setVerificationNullifier(result.nullifier_hash);
+                        setIsVerified(true);
+
+                        Swal.fire(
+                          "✔ Verificado",
+                          "Tu identidad fue confirmada correctamente.",
+                          "success"
+                        );
+                      } else {
+                        Swal.fire("Error", "Verificación inválida.", "error");
+                      }
+                    } catch (err) {
+                      Swal.fire("Error", "Hubo un problema verificando.", "error");
+                    }
+                  }}
+                  credential_types={["orb", "phone"]}
+                  autoClose
+                >
+                  {({ open }) => (
+                    <button
+                      onClick={open}
+                      className="w-full border border-indigo-200 py-2 mt-2 rounded-xl text-indigo-600 font-semibold"
+                    >
+                      Verificar identidad con World ID 🌐
+                    </button>
+                  )}
+                </IDKitWidget>
               </div>
 
               <button
                 onClick={handleStep1}
-                className="mt-4 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-indigo-700 transition"
+                className="mt-4 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold"
               >
-                Confirmar monto
+                Continuar
               </button>
             </motion.div>
           )}
 
-          {/* ========== ETAPA 2 — DATOS BANCARIOS ========= */}
+          {/* ============================
+              ETAPA 2 — DATOS BANCARIOS
+          ============================ */}
           {step === 2 && (
             <motion.div
               key="step2"
@@ -285,78 +311,68 @@ function App() {
               transition={{ duration: 0.25 }}
             >
               <p className="text-center text-gray-500 mb-4">
-                Ahora dinos a dónde te enviamos los pesos.
+                Ingresa los datos donde recibirás los COP.
               </p>
 
-              <div className="mb-3">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Banco o billetera
-                </label>
-                <BankSelector
-                  value={bankData.banco}
-                  onChange={(b) => setBankData({ ...bankData, banco: b })}
-                />
-              </div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Banco o billetera
+              </label>
+              <BankSelector
+                value={bankData.banco}
+                onChange={(b) => setBankData({ ...bankData, banco: b })}
+              />
 
-              <div className="mb-3">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Titular de la cuenta
-                </label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  placeholder="Nombre del titular"
-                  value={bankData.titular}
-                  onChange={(e) =>
-                    setBankData({ ...bankData, titular: e.target.value })
-                  }
-                />
-              </div>
+              <label className="block text-sm text-gray-600 mt-3 mb-1">
+                Titular de la cuenta
+              </label>
+              <input
+                className="w-full border border-gray-300 rounded-xl px-4 py-3"
+                placeholder="Nombre del titular"
+                value={bankData.titular}
+                onChange={(e) =>
+                  setBankData({ ...bankData, titular: e.target.value })
+                }
+              />
 
-              <div className="mb-1">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Número de cuenta / Nequi / Bre-B
-                </label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  placeholder="Ej: 3001234567"
-                  value={bankData.numero}
-                  onChange={(e) =>
-                    setBankData({ ...bankData, numero: e.target.value })
-                  }
-                />
-              </div>
+              <label className="block text-sm text-gray-600 mt-3 mb-1">
+                Número de cuenta / Nequi / Bre-B
+              </label>
+              <input
+                className="w-full border border-gray-300 rounded-xl px-4 py-3"
+                placeholder="Ej: 3001234567"
+                value={bankData.numero}
+                onChange={(e) =>
+                  setBankData({ ...bankData, numero: e.target.value })
+                }
+              />
 
-              <div className="text-xs text-gray-400 mt-2 mb-3">
-                Monto a recibir:{" "}
+              <div className="text-xs text-gray-400 mt-3">
+                Recibirás:{" "}
                 <span className="font-semibold text-indigo-600">
-                  {montoWLD && rate && rate.wld_cop_usuario
-                    ? `${formatCOP(
-                        Number(montoWLD) * Number(rate.wld_cop_usuario)
-                      )} COP`
-                    : "0 COP"}
+                  {formatCOP(montoWLD * rate?.wld_cop_usuario || 0)} COP
                 </span>
               </div>
 
               <div className="flex gap-3 mt-4">
                 <button
                   onClick={() => setStep(1)}
-                  className="w-1/3 border border-gray-300 text-gray-600 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
+                  className="w-1/3 border border-gray-300 py-3 rounded-xl"
                 >
                   Volver
                 </button>
                 <button
                   onClick={handleStep2}
-                  className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-indigo-700 transition"
+                  className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold"
                 >
-                  Confirmar y crear orden
+                  Crear orden
                 </button>
               </div>
             </motion.div>
           )}
 
-          {/* ========== ETAPA 3 — ESTADO DE LA ORDEN ========= */}
+          {/* ============================
+              ETAPA 3 — ESTADO DE ORDEN
+          ============================ */}
           {step === 3 && (
             <motion.div
               key="step3"
@@ -369,37 +385,15 @@ function App() {
                 Tu orden ha sido creada correctamente 🎉
               </p>
 
-              <div className="bg-indigo-50 border border-indigo-100 p-5 rounded-2xl mb-4 text-center">
-                <p className="text-sm text-gray-500 mb-1">
-                  Número de orden:
-                </p>
-                <p className="text-2xl font-extrabold text-indigo-700 mb-3">
-                  #{orderInfo?.id}
+              <div className="bg-indigo-50 p-4 rounded-xl text-center mb-4">
+                <p className="text-sm text-gray-500">Orden #</p>
+                <p className="text-3xl font-bold text-indigo-700">
+                  {orderInfo?.id}
                 </p>
 
-                <p className="text-sm text-gray-500 mb-1">Estado actual:</p>
+                <p className="text-sm text-gray-500 mt-3">Estado:</p>
                 <p className="text-xl font-bold">
                   {currentStatusLabel(orderInfo?.estado)}
-                </p>
-
-                <p className="text-xs text-gray-500 mt-3">
-                  Se actualiza automáticamente cada 5 segundos.
-                </p>
-              </div>
-
-              <div className="bg-gray-50 rounded-xl p-4 text-xs text-gray-500 mb-3">
-                <p>
-                  <b>Monto:</b>{" "}
-                  {orderInfo?.montoWLD} WLD →{" "}
-                  {orderInfo?.montoCOP
-                    ? `${formatCOP(orderInfo.montoCOP)} COP`
-                    : "-"}
-                </p>
-                <p>
-                  <b>Banco:</b> {orderInfo?.banco} • {orderInfo?.titular}
-                </p>
-                <p>
-                  <b>Cuenta:</b> {orderInfo?.numero}
                 </p>
               </div>
 
@@ -410,9 +404,11 @@ function App() {
                   setBankData({ banco: "", titular: "", numero: "" });
                   setOrderId(null);
                   setOrderInfo(null);
+                  setIsVerified(false);
+                  setVerificationNullifier(null);
                   setHasShownPaidAlert(false);
                 }}
-                className="mt-2 w-full border border-gray-300 text-gray-700 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
+                className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
               >
                 Crear una nueva orden
               </button>
