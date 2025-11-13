@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+// src/pages/OrderPage.jsx
+import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { API_BASE } from "../apiConfig";
@@ -11,10 +12,30 @@ function OrderPage() {
   const [orden, setOrden] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // 🔥 Bandera interna para evitar mostrar el alert varias veces
+  const pagoAlertShown = useRef(false);
+
   const fetchOrden = async () => {
     try {
       const res = await axios.get(`${API_BASE}/api/orders/${id}`);
-      setOrden(res.data);
+      const nuevaOrden = res.data;
+
+      // 🔥 Mostrar ALERT cuando pase a "pagada"
+      if (
+        nuevaOrden.estado === "pagada" &&
+        !pagoAlertShown.current
+      ) {
+        pagoAlertShown.current = true;
+
+        Swal.fire({
+          title: "💸 ¡Pago enviado!",
+          text: "Tu orden ha sido PAGADA. Revisa tu cuenta bancaria.",
+          icon: "success",
+          confirmButtonText: "Entendido",
+        });
+      }
+
+      setOrden(nuevaOrden);
       setLoading(false);
     } catch (err) {
       Swal.fire("Error", "Esta orden no existe o fue eliminada.", "error");
@@ -26,134 +47,209 @@ function OrderPage() {
     fetchOrden();
     const interval = setInterval(fetchOrden, 5000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   const estadoConfig = {
     pendiente: {
-      color: "bg-yellow-100 border-yellow-400 text-yellow-700",
-      icon: "⏳",
-      label: "Pendiente",
-      desc: "Estamos esperando la confirmación de tu operación.",
+      label: "Pendiente de envío",
+      desc: "Estamos esperando que envíes tus WLD.",
+      color: "bg-amber-100 text-amber-800 border-amber-300",
+      dot: "bg-amber-500",
     },
     enviada: {
-      color: "bg-blue-100 border-blue-400 text-blue-700",
-      icon: "📤",
       label: "Enviada",
-      desc: "Tu solicitud ha sido registrada y está en proceso.",
+      desc: "Detectamos tu envío. Estamos verificando.",
+      color: "bg-blue-100 text-blue-800 border-blue-300",
+      dot: "bg-blue-500",
     },
     recibida_wld: {
-      color: "bg-purple-100 border-purple-400 text-purple-700",
-      icon: "🟣",
       label: "WLD Recibidos",
-      desc: "Tus WLD fueron recibidos, estamos alistando el pago.",
+      desc: "Tus WLD fueron confirmados. Pagando...",
+      color: "bg-purple-100 text-purple-800 border-purple-300",
+      dot: "bg-purple-500",
     },
     pagada: {
-      color: "bg-green-100 border-green-400 text-green-700",
-      icon: "💵",
       label: "Pagada",
-      desc: "Tu pago fue enviado correctamente. ¡Gracias por usar ChangeWLD!",
+      desc: "Tu pago fue enviado correctamente.",
+      color: "bg-emerald-100 text-emerald-800 border-emerald-300",
+      dot: "bg-emerald-500",
     },
     rechazada: {
-      color: "bg-red-100 border-red-400 text-red-700",
-      icon: "❌",
       label: "Rechazada",
-      desc: "Tu orden fue rechazada. Si crees que es un error, contáctanos.",
+      desc: "Tu orden fue rechazada.",
+      color: "bg-rose-100 text-rose-800 border-rose-300",
+      dot: "bg-rose-500",
     },
   };
 
+  const steps = [
+    { key: "pendiente", label: "Pendiente" },
+    { key: "enviada", label: "Enviada" },
+    { key: "recibida_wld", label: "Recibida WLD" },
+    { key: "pagada", label: "Pagada" },
+  ];
+
+  const getCurrentStepIndex = (estado) => {
+    const idx = steps.findIndex((s) => s.key === estado);
+    return idx === -1 ? 0 : idx;
+  };
+
   const formatDate = (iso) => {
+    if (!iso) return "-";
     const d = new Date(iso);
     return d.toLocaleString("es-CO", { hour12: true });
   };
 
-  const formatCOP = (n) =>
-    Number(n || 0).toLocaleString("es-CO", {
-      maximumFractionDigits: 0,
-    });
-
-  if (loading) {
+  if (loading || !orden) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Cargando orden...
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Cargando orden...</p>
+        </div>
       </div>
     );
   }
 
-  const config = estadoConfig[orden.estado] || estadoConfig.pendiente;
+  const estadoActual = orden.estado || "pendiente";
+  const config = estadoConfig[estadoActual];
+  const currentStep = getCurrentStepIndex(estadoActual);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-200 py-10 px-4 flex flex-col items-center">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4 py-8">
       <motion.div
-        initial={{ opacity: 0, y: 25 }}
+        initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
-        className={`max-w-md w-full bg-white shadow-2xl rounded-3xl p-7 border-t-4 ${config.color}`}
+        transition={{ duration: 0.45 }}
+        className="w-full max-w-lg bg-white rounded-3xl shadow-xl border border-slate-100 px-6 py-7 md:px-8 md:py-8"
       >
-        <div className="text-center mb-5">
-          <h1 className="text-2xl font-bold text-indigo-700 mb-1">
-            ChangeWLD — Orden #{orden.id}
-          </h1>
-          <p className="text-xs text-gray-400">
-            Se actualiza automáticamente cada 5 segundos
-          </p>
-        </div>
-
-        <div className="text-center mb-5">
-          <div className="text-5xl mb-2">{config.icon}</div>
-          <h2 className="text-xl font-semibold mb-1">{config.label}</h2>
-          <p className="text-gray-600 text-sm">{config.desc}</p>
-        </div>
-
-        <div className="bg-gray-50 rounded-xl p-4 mb-5 border border-gray-200 text-sm text-gray-700">
-          <p className="mb-1">
-            <b>Monto:</b> {orden.montoWLD} WLD →{" "}
-            <span className="text-indigo-700 font-semibold">
-              {formatCOP(orden.montoCOP)} COP
-            </span>
-          </p>
-          <p className="mb-1">
-            <b>Banco:</b> {orden.banco} — {orden.titular}
-          </p>
-          <p className="mb-1">
-            <b>Cuenta:</b> {orden.numero}
-          </p>
-          <p className="mt-2 text-xs text-gray-500">
-            Última actualización: {formatDate(orden.actualizada_en)}
-          </p>
-        </div>
-
-        {/* Timeline */}
-        <div className="relative border-l-2 border-gray-300 pl-5 ml-2">
-          {Array.isArray(orden.status_history) &&
-          orden.status_history.length > 0 ? (
-            orden.status_history.map((s, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.05 }}
-                className="mb-3 relative"
-              >
-                <div className="absolute -left-[9px] w-4 h-4 rounded-full bg-indigo-500"></div>
-                <p className="font-semibold text-gray-800 text-sm">
-                  {s.to.toUpperCase()}
-                </p>
-                <p className="text-xs text-gray-500">{formatDate(s.at)}</p>
-              </motion.div>
-            ))
-          ) : (
-            <p className="text-gray-400 text-sm">
-              No hay historial disponible todavía.
+        {/* HEADER */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900">
+              Estado de tu orden
+            </h1>
+            <p className="text-xs text-slate-500 mt-1">
+              Orden: <span className="font-mono text-slate-700">#{orden.id}</span>
             </p>
-          )}
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] uppercase tracking-wide text-slate-400 block mb-1">
+              Última actualización
+            </span>
+            <span className="text-xs font-medium text-slate-600">
+              {formatDate(orden.actualizada_en)}
+            </span>
+          </div>
         </div>
 
-        <button
-          onClick={() => navigate("/")}
-          className="mt-6 w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all"
+        {/* ESTADO ACTUAL */}
+        <div
+          className={`mb-6 rounded-2xl border px-4 py-3.5 flex items-start gap-3 ${config.color}`}
         >
-          Crear nueva orden
-        </button>
+          <div
+            className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold ${config.dot}`}
+          >
+            {estadoActual === "pagada"
+              ? "✓"
+              : estadoActual === "rechazada"
+              ? "!"
+              : "•"}
+          </div>
+          <div>
+            <p className="text-sm font-semibold leading-tight">{config.label}</p>
+            <p className="text-xs text-slate-600 mt-1">{config.desc}</p>
+          </div>
+        </div>
+
+        {/* PROGRESS BAR */}
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-2">
+            {steps.map((step, idx) => {
+              const isDone = idx <= currentStep;
+              const isCurrent = idx === currentStep;
+              return (
+                <div key={step.key} className="flex-1 flex flex-col items-center">
+                  <div className="relative flex items-center justify-center w-full">
+                    {idx > 0 && (
+                      <div
+                        className={`absolute left-0 right-1 top-1/2 h-[2px] -translate-y-1/2 ${
+                          isDone ? "bg-indigo-500" : "bg-slate-200"
+                        }`}
+                      />
+                    )}
+                    <div
+                      className={`relative z-10 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] ${
+                        isDone
+                          ? "border-indigo-500 bg-indigo-50 text-indigo-600"
+                          : "border-slate-300 bg-white text-slate-400"
+                      }`}
+                    >
+                      {isDone ? "✓" : idx + 1}
+                    </div>
+                  </div>
+                  <span
+                    className={`mt-1 text-[11px] text-center ${
+                      isCurrent ? "text-indigo-600 font-semibold" : "text-slate-400"
+                    }`}
+                  >
+                    {step.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* DATOS DE MONTO */}
+        <div className="mb-6 rounded-2xl border border-slate-100 bg-slate-50/60 px-4 py-4 text-sm">
+          <div className="flex justify-between mb-1">
+            <span className="text-slate-500">Monto enviado</span>
+            <span className="font-semibold">{orden.montoWLD} WLD</span>
+          </div>
+          <div className="flex justify-between mb-1">
+            <span className="text-slate-500">Recibirás</span>
+            <span className="font-semibold text-emerald-700">
+              {Number(orden.montoCOP).toLocaleString("es-CO")} COP
+            </span>
+          </div>
+        </div>
+
+        {/* HISTORIAL */}
+        <div className="mb-5">
+          <h2 className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+            Historial
+          </h2>
+          <div className="relative pl-4 border-l border-slate-200 space-y-3 max-h-52 overflow-y-auto">
+            {orden.status_history?.map((s, i) => {
+              const conf = estadoConfig[s.to] || {};
+              return (
+                <div key={i} className="relative">
+                  <div
+                    className={`w-2 h-2 rounded-full absolute -left-[5px] top-1 ${
+                      conf.dot || "bg-slate-300"
+                    }`}
+                  />
+                  <p className="text-xs font-semibold text-slate-800">
+                    {s.to.toUpperCase()}
+                  </p>
+                  <p className="text-[11px] text-slate-500">{formatDate(s.at)}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* VOLVER */}
+        <motion.button
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => navigate("/")}
+          className="w-full mt-2 rounded-xl bg-slate-900 text-white text-sm font-semibold py-3 hover:bg-slate-800 transition"
+        >
+          ← Nueva orden
+        </motion.button>
       </motion.div>
     </div>
   );
