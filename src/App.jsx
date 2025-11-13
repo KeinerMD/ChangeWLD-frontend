@@ -1,321 +1,422 @@
-// ==============================
-// 🚀 ChangeWLD Backend v1.0 (estable para Render + Vercel)
-// ==============================
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { API_BASE } from "./apiConfig";
+import Swal from "sweetalert2";
+import { motion, AnimatePresence } from "framer-motion";
+import { IDKitWidget } from "@worldcoin/idkit";
 
-import dotenv from "dotenv";
-import path from "path";
-import express from "express";
-import helmet from "helmet";
-import fs from "fs";
-import fetch from "node-fetch";
-import { fileURLToPath } from "url";
-import https from "https";
+function App() {
+  const [step, setStep] = useState(1);
+  const [rate, setRate] = useState(null);
+  const [orderId, setOrderId] = useState(null);
+  const [orderInfo, setOrderInfo] = useState(null);
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+  // ========= FORMULARIOS =========
+  const [montoWLD, setMontoWLD] = useState("");
+  const [bankData, setBankData] = useState({
+    banco: "",
+    titular: "",
+    numero: "",
+  });
 
-// ========= CARGA VARIABLES .ENV =========
-dotenv.config({ path: path.resolve(__dirname, ".env") });
+  // ========= 1) CARGAR TASA DESDE BACKEND =========
+  useEffect(() => {
+    axios
+      .get(`${API_BASE}/api/rate`)
+      .then((res) => setRate(res.data))
+      .catch(() =>
+        Swal.fire("Error", "No se pudo obtener la tasa actual.", "error")
+      );
+  }, []);
 
-// ========= CONFIGURACIÓN =========
-const PORT = Number(process.env.PORT || 4000);
-const TEST_MODE = (process.env.TEST_MODE || "true").toLowerCase() === "true";
-const SPREAD = Number(process.env.SPREAD ?? "0.25"); // comisión 25%
-const OPERATOR_PIN = (process.env.OPERATOR_PIN || "4321").trim();
-const WALLET_DESTINO = (process.env.WALLET_DESTINO || "").trim();
+  // ========= 2) AUTO-REFRESH DE ORDEN CADA 5s =========
+  useEffect(() => {
+    if (!orderId) return;
 
-const WORLDCHAIN_RPC = process.env.WORLDCHAIN_RPC || "";
-const KEYSTORE_PATH = process.env.KEYSTORE_PATH || "";
-const KEYSTORE_PASSWORD = process.env.KEYSTORE_PASSWORD || "";
-const WLD_TOKEN_ADDRESS = (process.env.WLD_TOKEN_ADDRESS || "").trim();
+    const interval = setInterval(() => {
+      axios
+        .get(`${API_BASE}/api/orders/${orderId}`)
+        .then((res) => setOrderInfo(res.data))
+        .catch(() => {});
+    }, 5000);
 
-const app = express();
-const agent = new https.Agent({ rejectUnauthorized: false });
+    return () => clearInterval(interval);
+  }, [orderId]);
 
-app.use(helmet());
-app.use(express.json({ limit: "1mb" }));
-
-// ==============================
-// ✅ CORS (Render + Vercel + Local)
-// ==============================
-const allowedOrigins = [
-  "http://localhost:5173",             // desarrollo local
-  "https://changewld1.vercel.app",     // producción (Vercel)
-  "https://changewld-backend-1.onrender.com", // backend Render
-];
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-  }
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204); // responde rápido a preflight
-  }
-  next();
-});
-
-// ========= LOG DE ARRANQUE =========
-console.log("🟢 ChangeWLD iniciando...");
-console.log("🔐 PIN operador:", OPERATOR_PIN);
-console.log("🌍 Orígenes permitidos:", allowedOrigins.join(", "));
-console.log("💰 SPREAD:", SPREAD);
-
-// ========= STORAGE =========
-const ORDERS_FILE = path.join(__dirname, "orders.json");
-
-function ensureOrdersFile() {
-  if (!fs.existsSync(ORDERS_FILE)) {
-    fs.writeFileSync(
-      ORDERS_FILE,
-      JSON.stringify({ orders: [], lastId: 0 }, null, 2)
-    );
-    console.log("🆕 Archivo orders.json creado.");
-  }
-}
-
-function readStore() {
-  ensureOrdersFile();
-  try {
-    const data = JSON.parse(fs.readFileSync(ORDERS_FILE, "utf8"));
-    if (!data || typeof data !== "object" || !Array.isArray(data.orders)) {
-      return { orders: [], lastId: 0 };
+  // ========= ETAPA 1: CONFIRMAR MONTO =========
+  const handleStep1 = () => {
+    if (!montoWLD || Number(montoWLD) <= 0) {
+      Swal.fire("Monto inválido", "Ingresa un valor válido en WLD.", "warning");
+      return;
     }
-    return data;
-  } catch (e) {
-    console.error("⚠️ Error leyendo orders.json:", e.message);
-    return { orders: [], lastId: 0 };
-  }
-}
+    setStep(2);
+  };
 
-function writeStore(data) {
-  try {
-    fs.writeFileSync(ORDERS_FILE, JSON.stringify(data, null, 2));
-  } catch (e) {
-    console.error("❌ Error escribiendo orders.json:", e.message);
-  }
-}
-
-// ==============================
-// 🩺 ENDPOINTS BÁSICOS
-// ==============================
-app.get("/", (_, res) => res.send("🚀 ChangeWLD backend v1.0 OK"));
-
-app.get("/api/health", (_, res) =>
-  res.json({ ok: true, test_mode: TEST_MODE, now: new Date().toISOString() })
-);
-
-app.get("/api/config", (_, res) =>
-  res.json({
-    walletDestino: WALLET_DESTINO,
-    spreadPercent: SPREAD * 100,
-    testMode: TEST_MODE,
-    rpcUrl: WORLDCHAIN_RPC || null,
-    wldToken: WLD_TOKEN_ADDRESS || null,
-  })
-);
-
-// ==============================
-// 💱 /api/rate (Binance + ExchangeRate + Cache + 25% Spread)
-// ==============================
-let cachedRate = null;
-let lastFetchTime = 0;
-
-app.get("/api/rate", async (_, res) => {
-  try {
-    const now = Date.now();
-    const CACHE_TTL = 60_000; // 1 minuto
-
-    if (cachedRate && now - lastFetchTime < CACHE_TTL) {
-      console.log("🟢 /api/rate desde caché");
-      return res.json({ ...cachedRate, cached: true });
+  // ========= ETAPA 2: CONFIRMAR DATOS BANCARIOS Y CREAR ORDEN =========
+  const handleStep2 = async () => {
+    if (!bankData.banco || !bankData.titular || !bankData.numero) {
+      Swal.fire("Campos incompletos", "Llena todos los campos.", "warning");
+      return;
     }
 
-    console.log("📡 Consultando Binance + ExchangeRate.host...");
+    if (!rate || !rate.wld_cop_usuario) {
+      Swal.fire("Error", "La tasa aún no está disponible.", "error");
+      return;
+    }
 
-    let wldUsd = null;
-    let usdCop = null;
+    Swal.fire({
+      title: "Creando orden...",
+      text: "Por favor espera unos segundos.",
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading(),
+    });
 
-    // --- Binance: WLD/USDT ---
+    const montoCOP = Number(montoWLD) * Number(rate.wld_cop_usuario);
+
     try {
-      const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=WLDUSDT", {
-        agent,
-        timeout: 6000,
+      const res = await axios.post(`${API_BASE}/api/orders`, {
+        nombre: bankData.titular,
+        correo: "no-email@changewld.com", // no lo usas ahora, pero backend lo espera
+        banco: bankData.banco,
+        titular: bankData.titular,
+        numero: bankData.numero,
+        montoWLD: Number(montoWLD),
+        montoCOP: Number(montoCOP.toFixed(2)),
       });
-      if (r.ok) {
-        const j = await r.json();
-        wldUsd = parseFloat(j?.price);
-        console.log("✅ WLD/USDT:", wldUsd);
+
+      Swal.close();
+
+      if (res.data && res.data.ok && res.data.orden) {
+        setOrderId(res.data.orden.id);
+        setOrderInfo(res.data.orden);
+        setStep(3);
       } else {
-        console.warn("⚠️ Binance status:", r.status);
+        Swal.fire("Error", "No se pudo crear la orden.", "error");
       }
-    } catch (e) {
-      console.warn("⚠️ Binance error:", e.message);
+    } catch (err) {
+      Swal.close();
+      Swal.fire("Error", "No se pudo conectar con el servidor.", "error");
     }
+  };
 
-    // --- ExchangeRate.host: USD→COP ---
-    try {
-      const r = await fetch("https://api.exchangerate.host/latest?base=USD&symbols=COP", {
-        agent,
-        timeout: 6000,
-      });
-      if (r.ok) {
-        const j = await r.json();
-        usdCop = Number(j?.rates?.COP);
-        console.log("✅ USD→COP:", usdCop);
-      } else {
-        console.warn("⚠️ FX status:", r.status);
-      }
-    } catch (e) {
-      console.warn("⚠️ FX error:", e.message);
+  // ========= FORMATEADORES =========
+  const formatCOP = (n) =>
+    Number(n || 0).toLocaleString("es-CO", {
+      maximumFractionDigits: 0,
+    });
+
+  const currentStatusLabel = (estado) => {
+    switch (estado) {
+      case "pendiente":
+        return "⏳ Pendiente";
+      case "enviada":
+        return "📤 Enviada";
+      case "recibida_wld":
+        return "🟣 WLD Recibidos";
+      case "pagada":
+        return "💵 Pagada";
+      case "rechazada":
+        return "❌ Rechazada";
+      default:
+        return "⏳ Pendiente";
     }
+  };
 
-    // Fallbacks
-    if (!Number.isFinite(wldUsd)) {
-      wldUsd = 0.76; // fallback WLD/USD
-      console.log("🔁 fallback WLD/USD =", wldUsd);
-    }
-    if (!Number.isFinite(usdCop)) {
-      usdCop = 3700; // fallback USD/COP
-      console.log("🔁 fallback USD/COP =", usdCop);
-    }
+  // ========= UI PRINCIPAL =========
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 flex justify-center items-center px-4 py-6">
+      <motion.div
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-white shadow-2xl rounded-3xl p-7 w-full max-w-md"
+      >
+        {/* HEADER */}
+        <div className="mb-5 text-center">
+          <h1 className="text-3xl font-bold text-indigo-700 mb-1">
+            💱 ChangeWLD
+          </h1>
+          <p className="text-xs text-gray-400 uppercase tracking-widest">
+            Cambia tus WLD a pesos colombianos
+          </p>
+        </div>
 
-    const wldCopBruto = wldUsd * usdCop;
-    const wldCopUsuario = wldCopBruto * (1 - SPREAD);
+        {/* STEPPER */}
+        <div className="flex items-center justify-between mb-6">
+          {[1, 2, 3].map((s) => (
+            <div key={s} className="flex-1 flex flex-col items-center">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold
+                ${
+                  step === s
+                    ? "bg-indigo-600 text-white"
+                    : step > s
+                    ? "bg-emerald-500 text-white"
+                    : "bg-gray-200 text-gray-500"
+                }`}
+              >
+                {s}
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1">
+                {s === 1 && "Monto"}
+                {s === 2 && "Datos Bancarios"}
+                {s === 3 && "Estado de Orden"}
+              </p>
+            </div>
+          ))}
+        </div>
 
-    const ratePayload = {
-      ok: true,
-      wld_usd: Number(wldUsd.toFixed(6)),
-      usd_cop: Number(usdCop.toFixed(2)),
-      wld_cop_bruto: Number(wldCopBruto.toFixed(2)),
-      wld_cop_usuario: Number(wldCopUsuario.toFixed(2)),
-      spread_percent: SPREAD * 100,
-      fuente: "Binance + ExchangeRate.host (cache y fallback)",
-      fecha: new Date().toISOString(),
-    };
+        {/* CONTENIDO POR ETAPA */}
+        <AnimatePresence mode="wait">
+          {/* ============================
+              ETAPA 1 — INGRESAR MONTO
+          ============================ */}
+          {step === 1 && (
+            <motion.div
+              key="step1"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -40 }}
+              transition={{ duration: 0.25 }}
+            >
+              <p className="text-center text-gray-500 mb-4">
+                ¿Cuántos <b>WLD</b> tienes disponibles para cambiar?
+              </p>
 
-    cachedRate = ratePayload;
-    lastFetchTime = now;
+              <div className="mb-4">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Monto en WLD
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.0001"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Ej: 12.5"
+                  value={montoWLD}
+                  onChange={(e) => setMontoWLD(e.target.value)}
+                />
+              </div>
 
-    console.log("✅ /api/rate actualizado:", ratePayload);
-    res.json(ratePayload);
-  } catch (err) {
-    console.error("💥 /api/rate error:", err.message);
-    res.status(500).json({ ok: false, error: "Error obteniendo tasa", detalle: err.message });
-  }
-});
+              <div className="bg-indigo-50 p-4 rounded-xl text-center border border-indigo-100">
+                <p className="text-xs text-gray-500 mb-1">
+                  Tasa actual:
+                </p>
+                <p className="text-sm font-semibold text-indigo-700 mb-3">
+                  {rate && rate.wld_cop_usuario
+                    ? `${rate.wld_cop_usuario.toLocaleString(
+                        "es-CO"
+                      )} COP por 1 WLD`
+                    : "Cargando tasa..."}
+                </p>
 
-// ==============================
-// 🧾 ÓRDENES
-// ==============================
-app.post("/api/orders", (req, res) => {
-  try {
-    const { nombre, correo, banco, titular, numero, montoWLD, montoCOP } = req.body;
-    if (!nombre || !correo || !banco || !titular || !numero || !montoWLD || !montoCOP) {
-      return res.status(400).json({ ok: false, error: "Campos incompletos" });
-    }
+                <p className="text-xs text-gray-500 mb-1">
+                  Recibirás aproximadamente:
+                </p>
+                <p className="text-2xl font-extrabold text-indigo-700">
+                  {montoWLD && rate && rate.wld_cop_usuario
+                    ? `${formatCOP(
+                        Number(montoWLD) * Number(rate.wld_cop_usuario)
+                      )} COP`
+                    : "0 COP"}
+                </p>
+              </div>
 
-    const store = readStore();
-    const nueva = {
-      id: ++store.lastId,
-      nombre: String(nombre).trim(),
-      correo: String(correo).trim(),
-      banco: String(banco).trim(),
-      titular: String(titular).trim(),
-      numero: String(numero).trim(),
-      montoWLD: Number(montoWLD),
-      montoCOP: Number(montoCOP),
-      walletDestino: WALLET_DESTINO,
-      estado: "pendiente",
-      tx_hash: null,
-      creada_en: new Date().toISOString(),
-      actualizada_en: new Date().toISOString(),
-      status_history: [{ at: new Date().toISOString(), to: "pendiente" }],
-    };
+              {/* Verificación opcional World ID */}
+              <div className="mt-5">
+                <IDKitWidget
+                  app_id="app_123456789" // reemplaza con tu app_id real
+                  action="verify-changeWLD"
+                  onSuccess={(result) =>
+                    console.log("✅ Verificado con World ID:", result)
+                  }
+                  onError={() =>
+                    Swal.fire(
+                      "Error",
+                      "No se pudo verificar tu identidad.",
+                      "error"
+                    )
+                  }
+                  credential_types={["orb", "phone"]}
+                  autoClose
+                >
+                  {({ open }) => (
+                    <button
+                      onClick={open}
+                      className="w-full text-xs mb-2 border border-indigo-200 text-indigo-600 py-2 rounded-xl font-semibold hover:bg-indigo-50 transition"
+                    >
+                      Verificar identidad con World ID 🌐 (opcional)
+                    </button>
+                  )}
+                </IDKitWidget>
+              </div>
 
-    store.orders.unshift(nueva);
-    writeStore(store);
+              <button
+                onClick={handleStep1}
+                className="mt-4 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-indigo-700 transition"
+              >
+                Confirmar monto
+              </button>
+            </motion.div>
+          )}
 
-    if (TEST_MODE) {
-      const refreshed = readStore();
-      const idx = refreshed.orders.findIndex((o) => o.id === nueva.id);
-      if (idx !== -1) {
-        refreshed.orders[idx].estado = "enviada";
-        refreshed.orders[idx].tx_hash = `SIMULATED_TX_${Date.now()}`;
-        refreshed.orders[idx].status_history.push({
-          at: new Date().toISOString(),
-          to: "enviada",
-        });
-        refreshed.orders[idx].actualizada_en = new Date().toISOString();
-        writeStore(refreshed);
-      }
-    }
+          {/* ============================
+              ETAPA 2 — DATOS BANCARIOS
+          ============================ */}
+          {step === 2 && (
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -40 }}
+              transition={{ duration: 0.25 }}
+            >
+              <p className="text-center text-gray-500 mb-4">
+                Ahora dinos a dónde te enviamos los pesos.
+              </p>
 
-    const finalStore = readStore();
-    const finalOrder = finalStore.orders.find((o) => o.id === nueva.id);
-    res.json({ ok: true, orden: finalOrder });
-  } catch (e) {
-    console.error("❌ create order:", e.message);
-    res.status(500).json({ ok: false, error: "Error interno" });
-  }
-});
+              <div className="mb-3">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Banco o billetera
+                </label>
+                <select
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  value={bankData.banco}
+                  onChange={(e) =>
+                    setBankData({ ...bankData, banco: e.target.value })
+                  }
+                >
+                  <option value="">Selecciona una opción...</option>
+                  <option value="Nequi">Nequi</option>
+                  <option value="Daviplata">Daviplata</option>
+                  <option value="Bancolombia">Bancolombia</option>
+                </select>
+              </div>
 
-app.get("/api/orders/:id", (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ error: "ID inválido" });
+              <div className="mb-3">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Titular de la cuenta
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Nombre del titular"
+                  value={bankData.titular}
+                  onChange={(e) =>
+                    setBankData({ ...bankData, titular: e.target.value })
+                  }
+                />
+              </div>
 
-  const store = readStore();
-  const orden = store.orders.find((o) => o.id === id);
-  if (!orden) return res.status(404).json({ error: "Orden no encontrada" });
-  res.json(orden);
-});
+              <div className="mb-1">
+                <label className="block text-sm text-gray-600 mb-1">
+                  Número de cuenta / Nequi / Daviplata
+                </label>
+                <input
+                  type="text"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  placeholder="Ej: 3001234567"
+                  value={bankData.numero}
+                  onChange={(e) =>
+                    setBankData({ ...bankData, numero: e.target.value })
+                  }
+                />
+              </div>
 
-app.get("/api/orders-admin", (req, res) => {
-  const pin = (req.query.pin || "").trim();
-  if (pin !== OPERATOR_PIN) return res.status(403).json({ error: "PIN inválido" });
+              <div className="text-xs text-gray-400 mt-2 mb-3">
+                Monto a recibir:{" "}
+                <span className="font-semibold text-indigo-600">
+                  {montoWLD && rate && rate.wld_cop_usuario
+                    ? `${formatCOP(
+                        Number(montoWLD) * Number(rate.wld_cop_usuario)
+                      )} COP`
+                    : "0 COP"}
+                </span>
+              </div>
 
-  const store = readStore();
-  res.json(store.orders);
-});
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => setStep(1)}
+                  className="w-1/3 border border-gray-300 text-gray-600 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
+                >
+                  Volver
+                </button>
+                <button
+                  onClick={handleStep2}
+                  className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-indigo-700 transition"
+                >
+                  Confirmar y crear orden
+                </button>
+              </div>
+            </motion.div>
+          )}
 
-app.put("/api/orders/:id/estado", (req, res) => {
-  const pin = (req.body?.pin || "").trim();
-  if (pin !== OPERATOR_PIN) return res.status(403).json({ error: "PIN inválido" });
+          {/* ============================
+              ETAPA 3 — ESTADO DE LA ORDEN
+          ============================ */}
+          {step === 3 && (
+            <motion.div
+              key="step3"
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -40 }}
+              transition={{ duration: 0.25 }}
+            >
+              <p className="text-center text-gray-500 mb-3">
+                Tu orden ha sido creada correctamente 🎉
+              </p>
 
-  const id = Number(req.params.id);
-  const estado = (req.body?.estado || "").trim();
+              <div className="bg-indigo-50 border border-indigo-100 p-5 rounded-2xl mb-4 text-center">
+                <p className="text-sm text-gray-500 mb-1">
+                  Número de orden:
+                </p>
+                <p className="text-2xl font-extrabold text-indigo-700 mb-3">
+                  #{orderInfo?.id}
+                </p>
 
-  const validos = ["pendiente", "enviada", "recibida_wld", "pagada", "rechazada"];
-  if (!validos.includes(estado)) return res.status(400).json({ error: "Estado inválido" });
+                <p className="text-sm text-gray-500 mb-1">Estado actual:</p>
+                <p className="text-xl font-bold">
+                  {currentStatusLabel(orderInfo?.estado)}
+                </p>
 
-  const store = readStore();
-  const idx = store.orders.findIndex((o) => o.id === id);
-  if (idx === -1) return res.status(404).json({ error: "Orden no encontrada" });
+                <p className="text-xs text-gray-500 mt-3">
+                  Se actualiza automáticamente cada 5 segundos.
+                </p>
+              </div>
 
-  const orden = store.orders[idx];
-  if (!Array.isArray(orden.status_history)) orden.status_history = [];
+              <div className="bg-gray-50 rounded-xl p-4 text-xs text-gray-500 mb-3">
+                <p>
+                  <b>Monto:</b>{" "}
+                  {orderInfo?.montoWLD} WLD →{" "}
+                  {orderInfo?.montoCOP
+                    ? `${formatCOP(orderInfo.montoCOP)} COP`
+                    : "-"}
+                </p>
+                <p>
+                  <b>Banco:</b> {orderInfo?.banco} • {orderInfo?.titular}
+                </p>
+                <p>
+                  <b>Cuenta:</b> {orderInfo?.numero}
+                </p>
+              </div>
 
-  orden.estado = estado;
-  orden.status_history.push({ at: new Date().toISOString(), to: estado });
-  orden.actualizada_en = new Date().toISOString();
+              <button
+                onClick={() => {
+                  setStep(1);
+                  setMontoWLD("");
+                  setBankData({ banco: "", titular: "", numero: "" });
+                  setOrderId(null);
+                  setOrderInfo(null);
+                }}
+                className="mt-2 w-full border border-gray-300 text-gray-700 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
+              >
+                Crear una nueva orden
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
+  );
+}
 
-  if (estado === "pagada" && !orden.tx_hash) {
-    orden.tx_hash = `TX_CONFIRMED_${Date.now()}`;
-  }
-
-  store.orders[idx] = orden;
-  writeStore(store);
-
-  console.log(`✅ Orden #${id} -> ${estado}`);
-  res.json({ ok: true, orden });
-});
-
-// ========= 404 =========
-app.use((_, res) => res.status(404).json({ error: "Ruta no encontrada" }));
-
-// ========= START =========
-app.listen(PORT, () => {
-  console.log(`🚀 Backend listo en puerto ${PORT} (TEST_MODE=${TEST_MODE})`);
-});
+export default App;
