@@ -277,7 +277,6 @@ function App() {
 
     <div className="mb-3">
       <label className="block text-sm text-gray-600 mb-1">
-        Banco o billetera
       </label>
       <BankSelector
         value={bankData.banco}
@@ -302,7 +301,7 @@ function App() {
 
     <div className="mb-1">
       <label className="block text-sm text-gray-600 mb-1">
-        Número de cuenta / Nequi / Daviplata
+        Número de cuenta / Nequi / Bre-B
       </label>
       <input
         type="text"

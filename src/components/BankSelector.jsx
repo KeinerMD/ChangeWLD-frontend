@@ -1,66 +1,39 @@
-import React, { useState } from "react";
-import nequi from "../assets/nequi.png";
-import breb from "../assets/breb.png";
-
-const banks = [
-  {
-    id: "Nequi",
-    name: "Nequi",
-    logo: nequi,
-    color: "from-purple-500 to-pink-500",
-  },
-  {
-    id: "Llave Bre-B",
-    name: "Llave Bre-B",
-    logo: breb,
-    color: "from-blue-500 to-cyan-500",
-  },
-];
+import React from "react";
+import nequiLogo from "../assets/nequi.png";
+import brebLogo from "../assets/breb.png";
 
 export default function BankSelector({ value, onChange }) {
-  const [open, setOpen] = useState(false);
-
-  const selected = banks.find((b) => b.id === value);
+  const banks = [
+    {
+      id: "Nequi",
+      name: "Nequi",
+      logo: nequiLogo,
+      bg: "from-pink-500 to-purple-600",
+    },
+    {
+      id: "BRE-B",
+      name: "Llave BRE-B",
+      logo: brebLogo,
+      bg: "from-blue-600 to-cyan-500",
+    },
+  ];
 
   return (
-    <div className="relative w-full">
-      <p className="text-sm text-gray-600 mb-1 px-1">Banco o billetera</p>
-
-      {/* Caja principal */}
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full border border-gray-300 rounded-xl px-4 py-3 flex items-center justify-between bg-white shadow-sm"
-      >
-        {selected ? (
-          <div className="flex items-center gap-3">
-            <img src={selected.logo} className="w-7 h-7 rounded-full" />
-            <span className="font-medium text-gray-800">{selected.name}</span>
-          </div>
-        ) : (
-          <span className="text-gray-400">Selecciona un banco...</span>
-        )}
-
-        <span className="text-gray-500">▼</span>
-      </button>
-
-      {/* Dropdown */}
-      {open && (
-        <div className="absolute z-20 mt-2 w-full bg-white shadow-xl rounded-xl border border-gray-200">
-          {banks.map((bank) => (
-            <button
-              key={bank.id}
-              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-100 transition rounded-xl"
-              onClick={() => {
-                onChange(bank.id);
-                setOpen(false);
-              }}
-            >
-              <img src={bank.logo} className="w-8 h-8 rounded-full" />
-              <span className="text-gray-800">{bank.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
+    <div className="grid grid-cols-2 gap-4">
+      {banks.map((bank) => (
+        <button
+          key={bank.id}
+          onClick={() => onChange(bank.id)}
+          className={`
+            flex flex-col items-center justify-center gap-2 p-4 rounded-2xl shadow-md 
+            bg-gradient-to-br ${bank.bg} text-white transition transform hover:scale-105
+            ${value === bank.id ? "ring-4 ring-yellow-300" : ""}
+          `}
+        >
+          <img src={bank.logo} alt={bank.name} className="w-14 h-14 object-contain" />
+          <span className="font-semibold text-sm">{bank.name}</span>
+        </button>
+      ))}
     </div>
   );
 }
