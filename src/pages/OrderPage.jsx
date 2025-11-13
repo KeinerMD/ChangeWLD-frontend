@@ -26,30 +26,31 @@ function OrderPage() {
     fetchOrden();
     const interval = setInterval(fetchOrden, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const estadoConfig = {
     pendiente: {
       color: "bg-yellow-100 border-yellow-400 text-yellow-700",
-      icon: "🕒",
-      label: "Pendiente de envío",
-      desc: "Estamos esperando que envíes tus Worldcoins.",
+      icon: "⏳",
+      label: "Pendiente",
+      desc: "Estamos esperando la confirmación de tu operación.",
     },
     enviada: {
       color: "bg-blue-100 border-blue-400 text-blue-700",
       icon: "📤",
       label: "Enviada",
-      desc: "Tu transferencia fue detectada. Estamos verificando el depósito.",
+      desc: "Tu solicitud ha sido registrada y está en proceso.",
     },
     recibida_wld: {
       color: "bg-purple-100 border-purple-400 text-purple-700",
-      icon: "🔍",
+      icon: "🟣",
       label: "WLD Recibidos",
-      desc: "Tus Worldcoins fueron confirmados. Procesando pago.",
+      desc: "Tus WLD fueron recibidos, estamos alistando el pago.",
     },
     pagada: {
       color: "bg-green-100 border-green-400 text-green-700",
-      icon: "💸",
+      icon: "💵",
       label: "Pagada",
       desc: "Tu pago fue enviado correctamente. ¡Gracias por usar ChangeWLD!",
     },
@@ -57,7 +58,7 @@ function OrderPage() {
       color: "bg-red-100 border-red-400 text-red-700",
       icon: "❌",
       label: "Rechazada",
-      desc: "Tu orden fue rechazada. Contacta soporte si crees que hubo un error.",
+      desc: "Tu orden fue rechazada. Si crees que es un error, contáctanos.",
     },
   };
 
@@ -66,12 +67,18 @@ function OrderPage() {
     return d.toLocaleString("es-CO", { hour12: true });
   };
 
-  if (loading)
+  const formatCOP = (n) =>
+    Number(n || 0).toLocaleString("es-CO", {
+      maximumFractionDigits: 0,
+    });
+
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500">
         Cargando orden...
       </div>
     );
+  }
 
   const config = estadoConfig[orden.estado] || estadoConfig.pendiente;
 
@@ -80,56 +87,54 @@ function OrderPage() {
       <motion.div
         initial={{ opacity: 0, y: 25 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
         className={`max-w-md w-full bg-white shadow-2xl rounded-3xl p-7 border-t-4 ${config.color}`}
       >
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-indigo-700 mb-2">
-            ChangeWLD
+        <div className="text-center mb-5">
+          <h1 className="text-2xl font-bold text-indigo-700 mb-1">
+            ChangeWLD — Orden #{orden.id}
           </h1>
-          <p className="text-sm text-gray-500">Orden #{orden.id}</p>
+          <p className="text-xs text-gray-400">
+            Se actualiza automáticamente cada 5 segundos
+          </p>
         </div>
 
         <div className="text-center mb-5">
-          <div className="text-6xl mb-3">{config.icon}</div>
+          <div className="text-5xl mb-2">{config.icon}</div>
           <h2 className="text-xl font-semibold mb-1">{config.label}</h2>
           <p className="text-gray-600 text-sm">{config.desc}</p>
         </div>
 
-        <div className="bg-gray-50 rounded-xl p-4 mb-5 border border-gray-200">
-          <p className="text-gray-700 text-sm mb-1">
+        <div className="bg-gray-50 rounded-xl p-4 mb-5 border border-gray-200 text-sm text-gray-700">
+          <p className="mb-1">
             <b>Monto:</b> {orden.montoWLD} WLD →{" "}
             <span className="text-indigo-700 font-semibold">
-              {orden.montoCOP.toLocaleString("es-CO")} COP
+              {formatCOP(orden.montoCOP)} COP
             </span>
           </p>
-          <p className="text-gray-700 text-sm mb-1">
+          <p className="mb-1">
             <b>Banco:</b> {orden.banco} — {orden.titular}
           </p>
-          <p className="text-gray-700 text-sm mb-1">
+          <p className="mb-1">
             <b>Cuenta:</b> {orden.numero}
           </p>
-          <p className="text-gray-500 text-xs mt-2">
-            Wallet destino: <b>{orden.walletDestino}</b>
+          <p className="mt-2 text-xs text-gray-500">
+            Última actualización: {formatDate(orden.actualizada_en)}
           </p>
         </div>
 
-        {/* Línea de tiempo visual */}
+        {/* Timeline */}
         <div className="relative border-l-2 border-gray-300 pl-5 ml-2">
-          {Array.isArray(orden?.status_history) && orden.status_history.length > 0 ? (
+          {Array.isArray(orden.status_history) &&
+          orden.status_history.length > 0 ? (
             orden.status_history.map((s, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.1 }}
+                transition={{ delay: i * 0.05 }}
                 className="mb-3 relative"
               >
-                <div
-                  className={`absolute -left-[9px] w-4 h-4 rounded-full ${
-                    estadoConfig[s.to]?.color?.split(" ")[0] || "bg-gray-400"
-                  }`}
-                ></div>
+                <div className="absolute -left-[9px] w-4 h-4 rounded-full bg-indigo-500"></div>
                 <p className="font-semibold text-gray-800 text-sm">
                   {s.to.toUpperCase()}
                 </p>
@@ -137,24 +142,19 @@ function OrderPage() {
               </motion.div>
             ))
           ) : (
-            <p className="text-gray-400 text-sm">Aún no hay historial disponible.</p>
+            <p className="text-gray-400 text-sm">
+              No hay historial disponible todavía.
+            </p>
           )}
         </div>
 
-        {/* Botón volver */}
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
+        <button
           onClick={() => navigate("/")}
           className="mt-6 w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl font-semibold shadow-md hover:shadow-lg transition-all"
         >
-          Nueva orden
-        </motion.button>
+          Crear nueva orden
+        </button>
       </motion.div>
-
-      <p className="text-gray-400 text-xs mt-6">
-        Última actualización: {formatDate(orden.actualizada_en)}
-      </p>
     </div>
   );
 }
