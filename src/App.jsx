@@ -261,87 +261,88 @@ function App() {
           )}
 
           {/* ============================
-              ETAPA 2 — DATOS BANCARIOS
-          ============================ */}
-          {step === 2 && (
-            <motion.div
-              key="step2"
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -40 }}
-              transition={{ duration: 0.25 }}
-            >
-              <p className="text-center text-gray-500 mb-4">
-                Ahora dinos a dónde te enviamos los pesos.
-              </p>
+    ETAPA 2 — DATOS BANCARIOS
+============================ */}
+{step === 2 && (
+  <motion.div
+    key="step2"
+    initial={{ opacity: 0, x: 40 }}
+    animate={{ opacity: 1, x: 0 }}
+    exit={{ opacity: 0, x: -40 }}
+    transition={{ duration: 0.25 }}
+  >
+    <p className="text-center text-gray-500 mb-4">
+      Ahora dinos a dónde te enviamos los pesos.
+    </p>
 
-              <div className="mb-3">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Banco o billetera
-                </label>
-                <BankSelector
-  value={form.banco}
-  onChange={(b) => setForm({ ...form, banco: b })}
-/>
-              </div>
+    <div className="mb-3">
+      <label className="block text-sm text-gray-600 mb-1">
+        Banco o billetera
+      </label>
+      <BankSelector
+        value={bankData.banco}
+        onChange={(b) => setBankData({ ...bankData, banco: b })}
+      />
+    </div>
 
-              <div className="mb-3">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Titular de la cuenta
-                </label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  placeholder="Nombre del titular"
-                  value={bankData.titular}
-                  onChange={(e) =>
-                    setBankData({ ...bankData, titular: e.target.value })
-                  }
-                />
-              </div>
+    <div className="mb-3">
+      <label className="block text-sm text-gray-600 mb-1">
+        Titular de la cuenta
+      </label>
+      <input
+        type="text"
+        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        placeholder="Nombre del titular"
+        value={bankData.titular}
+        onChange={(e) =>
+          setBankData({ ...bankData, titular: e.target.value })
+        }
+      />
+    </div>
 
-              <div className="mb-1">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Número de cuenta / Nequi / Daviplata
-                </label>
-                <input
-                  type="text"
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  placeholder="Ej: 3001234567"
-                  value={bankData.numero}
-                  onChange={(e) =>
-                    setBankData({ ...bankData, numero: e.target.value })
-                  }
-                />
-              </div>
+    <div className="mb-1">
+      <label className="block text-sm text-gray-600 mb-1">
+        Número de cuenta / Nequi / Daviplata
+      </label>
+      <input
+        type="text"
+        className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+        placeholder="Ej: 3001234567"
+        value={bankData.numero}
+        onChange={(e) =>
+          setBankData({ ...bankData, numero: e.target.value })
+        }
+      />
+    </div>
 
-              <div className="text-xs text-gray-400 mt-2 mb-3">
-                Monto a recibir:{" "}
-                <span className="font-semibold text-indigo-600">
-                  {montoWLD && rate && rate.wld_cop_usuario
-                    ? `${formatCOP(
-                        Number(montoWLD) * Number(rate.wld_cop_usuario)
-                      )} COP`
-                    : "0 COP"}
-                </span>
-              </div>
+    <div className="text-xs text-gray-400 mt-2 mb-3">
+      Monto a recibir:{" "}
+      <span className="font-semibold text-indigo-600">
+        {montoWLD && rate && rate.wld_cop_usuario
+          ? `${formatCOP(
+              Number(montoWLD) * Number(rate.wld_cop_usuario)
+            )} COP`
+          : "0 COP"}
+      </span>
+    </div>
 
-              <div className="flex gap-3 mt-4">
-                <button
-                  onClick={() => setStep(1)}
-                  className="w-1/3 border border-gray-300 text-gray-600 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
-                >
-                  Volver
-                </button>
-                <button
-                  onClick={handleStep2}
-                  className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-indigo-700 transition"
-                >
-                  Confirmar y crear orden
-                </button>
-              </div>
-            </motion.div>
-          )}
+    <div className="flex gap-3 mt-4">
+      <button
+        onClick={() => setStep(1)}
+        className="w-1/3 border border-gray-300 text-gray-600 py-3 rounded-xl text-sm font-semibold hover:bg-gray-50"
+      >
+        Volver
+      </button>
+      <button
+        onClick={handleStep2}
+        className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold shadow-md hover:bg-indigo-700 transition"
+      >
+        Confirmar y crear orden
+      </button>
+    </div>
+  </motion.div>
+)}
+
 
           {/* ============================
               ETAPA 3 — ESTADO DE LA ORDEN
