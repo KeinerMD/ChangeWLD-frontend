@@ -4,6 +4,7 @@ import { API_BASE } from "./apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
 import { IDKitWidget } from "@worldcoin/idkit";
+import BankSelector from "./components/BankSelector";
 
 function App() {
   const [step, setStep] = useState(1);
@@ -278,18 +279,10 @@ function App() {
                 <label className="block text-sm text-gray-600 mb-1">
                   Banco o billetera
                 </label>
-                <select
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  value={bankData.banco}
-                  onChange={(e) =>
-                    setBankData({ ...bankData, banco: e.target.value })
-                  }
-                >
-                  <option value="">Selecciona una opción...</option>
-                  <option value="Nequi">Nequi</option>
-                  <option value="Daviplata">Daviplata</option>
-                  <option value="Bancolombia">Bancolombia</option>
-                </select>
+                <BankSelector
+  value={form.banco}
+  onChange={(b) => setForm({ ...form, banco: b })}
+/>
               </div>
 
               <div className="mb-3">
