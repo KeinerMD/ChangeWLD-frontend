@@ -1,213 +1,321 @@
-import React, { useState, useEffect, useMemo } from "react";
-import axios from "axios";
-import { API_BASE } from "./apiConfig";
-import Swal from "sweetalert2";
-import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
-import { IDKitWidget } from "@worldcoin/idkit";
+// ==============================
+// 🚀 ChangeWLD Backend v1.0 (estable para Render + Vercel)
+// ==============================
 
-function App() {
-  const [form, setForm] = useState({
-    nombre: "",
-    correo: "",
-    banco: "",
-    titular: "",
-    numero: "",
-    montoWLD: "",
-  });
+import dotenv from "dotenv";
+import path from "path";
+import express from "express";
+import helmet from "helmet";
+import fs from "fs";
+import fetch from "node-fetch";
+import { fileURLToPath } from "url";
+import https from "https";
 
-  const [rate, setRate] = useState(null);
-  const navigate = useNavigate();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-  // ✅ Obtener la tasa al cargar
-  useEffect(() => {
-    const fetchRate = async () => {
-      try {
-        const res = await axios.get(`${API_BASE}/api/rate`);
-        if (res.data && res.data.ok) {
-          setRate(res.data);
-        } else {
-          Swal.fire("Error", "No se pudo obtener la tasa actual", "error");
-        }
-      } catch (err) {
-        Swal.fire("Error", "No se pudo conectar con el servidor", "error");
-      }
-    };
-    fetchRate();
-  }, []);
+// ========= CARGA VARIABLES .ENV =========
+dotenv.config({ path: path.resolve(__dirname, ".env") });
 
-  // ✅ Calcular el valor que recibirá el usuario (reactivo)
-  const montoCOP = useMemo(() => {
-    const monto = parseFloat(form.montoWLD);
-    if (!rate || !rate.wld_cop_usuario || isNaN(monto)) return 0;
-    return Math.round(monto * rate.wld_cop_usuario);
-  }, [form.montoWLD, rate]);
+// ========= CONFIGURACIÓN =========
+const PORT = Number(process.env.PORT || 4000);
+const TEST_MODE = (process.env.TEST_MODE || "true").toLowerCase() === "true";
+const SPREAD = Number(process.env.SPREAD ?? "0.25"); // comisión 25%
+const OPERATOR_PIN = (process.env.OPERATOR_PIN || "4321").trim();
+const WALLET_DESTINO = (process.env.WALLET_DESTINO || "").trim();
 
-  // ✅ Crear la orden
-  const handleCrearOrden = async () => {
-    if (
-      !form.nombre ||
-      !form.correo ||
-      !form.banco ||
-      !form.titular ||
-      !form.numero ||
-      !form.montoWLD
-    ) {
-      Swal.fire("Campos incompletos", "Por favor llena todos los campos", "warning");
-      return;
-    }
+const WORLDCHAIN_RPC = process.env.WORLDCHAIN_RPC || "";
+const KEYSTORE_PATH = process.env.KEYSTORE_PATH || "";
+const KEYSTORE_PASSWORD = process.env.KEYSTORE_PASSWORD || "";
+const WLD_TOKEN_ADDRESS = (process.env.WLD_TOKEN_ADDRESS || "").trim();
 
-    try {
-      Swal.fire({
-        title: "Procesando orden...",
-        text: "Por favor espera unos segundos.",
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading(),
-      });
+const app = express();
+const agent = new https.Agent({ rejectUnauthorized: false });
 
-      const res = await axios.post(`${API_BASE}/api/orders`, {
-        ...form,
-        montoCOP,
-      });
+app.use(helmet());
+app.use(express.json({ limit: "1mb" }));
 
-      Swal.close();
+// ==============================
+// ✅ CORS (Render + Vercel + Local)
+// ==============================
+const allowedOrigins = [
+  "http://localhost:5173",             // desarrollo local
+  "https://changewld1.vercel.app",     // producción (Vercel)
+  "https://changewld-backend-1.onrender.com", // backend Render
+];
 
-      if (res.data && res.data.ok && res.data.orden) {
-        Swal.fire({
-          title: "✅ Orden creada",
-          text: `Tu orden #${res.data.orden.id} fue registrada exitosamente.`,
-          icon: "success",
-          showConfirmButton: false,
-          timer: 1500,
-        });
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204); // responde rápido a preflight
+  }
+  next();
+});
 
-        setTimeout(() => navigate(`/order/${res.data.orden.id}`), 1200);
-        setForm({
-          nombre: "",
-          correo: "",
-          banco: "",
-          titular: "",
-          numero: "",
-          montoWLD: "",
-        });
-      } else {
-        Swal.fire("Error", "No se pudo crear la orden", "error");
-      }
-    } catch (err) {
-      Swal.close();
-      Swal.fire("Error", "No se pudo conectar con el servidor.", "error");
-    }
-  };
+// ========= LOG DE ARRANQUE =========
+console.log("🟢 ChangeWLD iniciando...");
+console.log("🔐 PIN operador:", OPERATOR_PIN);
+console.log("🌍 Orígenes permitidos:", allowedOrigins.join(", "));
+console.log("💰 SPREAD:", SPREAD);
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 flex flex-col items-center py-10 px-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="bg-white rounded-3xl shadow-2xl p-8 w-full max-w-md"
-      >
-        <h1 className="text-3xl font-bold text-center text-indigo-700 mb-2">
-          💱 ChangeWLD
-        </h1>
-        <p className="text-center text-gray-500 mb-6">
-          Convierte tus <b>Worldcoins (WLD)</b> a pesos colombianos (COP)
-        </p>
+// ========= STORAGE =========
+const ORDERS_FILE = path.join(__dirname, "orders.json");
 
-        {/* Campos */}
-        <div className="space-y-5">
-          {[
-            { id: "nombre", label: "Nombre completo" },
-            { id: "correo", label: "Correo electrónico", type: "email" },
-            { id: "banco", label: "Banco o billetera", select: true },
-            { id: "titular", label: "Titular de cuenta" },
-            { id: "numero", label: "Número de cuenta o Nequi" },
-            { id: "montoWLD", label: "Monto en WLD", type: "number" },
-          ].map((field) => (
-            <div key={field.id} className="relative">
-              {field.select ? (
-                <select
-                  className="peer w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-transparent focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  value={form.banco}
-                  onChange={(e) => setForm({ ...form, banco: e.target.value })}
-                >
-                  <option value="">Selecciona un banco...</option>
-                  <option value="Nequi">Nequi</option>
-                  <option value="Bancolombia">Bancolombia</option>
-                </select>
-              ) : (
-                <input
-                  type={field.type || "text"}
-                  id={field.id}
-                  className="peer w-full border border-gray-300 rounded-xl px-4 py-3 text-gray-700 bg-transparent focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                  value={form[field.id]}
-                  onChange={(e) =>
-                    setForm({ ...form, [field.id]: e.target.value })
-                  }
-                  placeholder=" "
-                />
-              )}
-              <label
-                htmlFor={field.id}
-                className="absolute text-gray-500 text-sm bg-white px-1 transition-all left-3 top-2.5 peer-placeholder-shown:top-3.5 peer-placeholder-shown:text-gray-400 peer-placeholder-shown:text-base peer-focus:top-0 peer-focus:text-sm peer-focus:text-indigo-600"
-              >
-                {field.label}
-              </label>
-            </div>
-          ))}
-        </div>
-
-        {/* Resumen dinámico */}
-        <div className="mt-6 bg-indigo-50 p-4 rounded-xl text-center">
-          <p className="text-sm text-gray-600 mb-1">
-            {rate && rate.ok ? (
-              <>
-                Tasa actual:{" "}
-                <b>
-                  {Number(rate.wld_cop_usuario).toLocaleString("es-CO")} COP/WLD
-                </b>
-              </>
-            ) : (
-              <span className="text-gray-400">Cargando tasa...</span>
-            )}
-          </p>
-          <p className="text-lg font-semibold text-indigo-700">
-            Recibirás: {montoCOP.toLocaleString("es-CO")}{" "}
-            <span className="text-gray-700">COP</span>
-          </p>
-        </div>
-
-        {/* Verificación World ID */}
-        <IDKitWidget
-          app_id="app_123456789" // ⚠️ reemplaza por tu ID real de Worldcoin
-          action="verify-changeWLD"
-          onSuccess={(result) => console.log("✅ Verificado:", result)}
-          onError={() => Swal.fire("Error", "No se pudo verificar identidad", "error")}
-          credential_types={["orb", "phone"]}
-          autoClose
-        >
-          {({ open }) => (
-            <button
-              onClick={open}
-              className="mt-4 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold"
-            >
-              Verificar con World ID 🌐
-            </button>
-          )}
-        </IDKitWidget>
-
-        {/* Botón Crear */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={handleCrearOrden}
-          className="mt-6 w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-xl text-lg font-semibold shadow-md hover:shadow-lg transition-all"
-        >
-          Crear orden
-        </motion.button>
-      </motion.div>
-    </div>
-  );
+function ensureOrdersFile() {
+  if (!fs.existsSync(ORDERS_FILE)) {
+    fs.writeFileSync(
+      ORDERS_FILE,
+      JSON.stringify({ orders: [], lastId: 0 }, null, 2)
+    );
+    console.log("🆕 Archivo orders.json creado.");
+  }
 }
 
-export default App;
+function readStore() {
+  ensureOrdersFile();
+  try {
+    const data = JSON.parse(fs.readFileSync(ORDERS_FILE, "utf8"));
+    if (!data || typeof data !== "object" || !Array.isArray(data.orders)) {
+      return { orders: [], lastId: 0 };
+    }
+    return data;
+  } catch (e) {
+    console.error("⚠️ Error leyendo orders.json:", e.message);
+    return { orders: [], lastId: 0 };
+  }
+}
+
+function writeStore(data) {
+  try {
+    fs.writeFileSync(ORDERS_FILE, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error("❌ Error escribiendo orders.json:", e.message);
+  }
+}
+
+// ==============================
+// 🩺 ENDPOINTS BÁSICOS
+// ==============================
+app.get("/", (_, res) => res.send("🚀 ChangeWLD backend v1.0 OK"));
+
+app.get("/api/health", (_, res) =>
+  res.json({ ok: true, test_mode: TEST_MODE, now: new Date().toISOString() })
+);
+
+app.get("/api/config", (_, res) =>
+  res.json({
+    walletDestino: WALLET_DESTINO,
+    spreadPercent: SPREAD * 100,
+    testMode: TEST_MODE,
+    rpcUrl: WORLDCHAIN_RPC || null,
+    wldToken: WLD_TOKEN_ADDRESS || null,
+  })
+);
+
+// ==============================
+// 💱 /api/rate (Binance + ExchangeRate + Cache + 25% Spread)
+// ==============================
+let cachedRate = null;
+let lastFetchTime = 0;
+
+app.get("/api/rate", async (_, res) => {
+  try {
+    const now = Date.now();
+    const CACHE_TTL = 60_000; // 1 minuto
+
+    if (cachedRate && now - lastFetchTime < CACHE_TTL) {
+      console.log("🟢 /api/rate desde caché");
+      return res.json({ ...cachedRate, cached: true });
+    }
+
+    console.log("📡 Consultando Binance + ExchangeRate.host...");
+
+    let wldUsd = null;
+    let usdCop = null;
+
+    // --- Binance: WLD/USDT ---
+    try {
+      const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=WLDUSDT", {
+        agent,
+        timeout: 6000,
+      });
+      if (r.ok) {
+        const j = await r.json();
+        wldUsd = parseFloat(j?.price);
+        console.log("✅ WLD/USDT:", wldUsd);
+      } else {
+        console.warn("⚠️ Binance status:", r.status);
+      }
+    } catch (e) {
+      console.warn("⚠️ Binance error:", e.message);
+    }
+
+    // --- ExchangeRate.host: USD→COP ---
+    try {
+      const r = await fetch("https://api.exchangerate.host/latest?base=USD&symbols=COP", {
+        agent,
+        timeout: 6000,
+      });
+      if (r.ok) {
+        const j = await r.json();
+        usdCop = Number(j?.rates?.COP);
+        console.log("✅ USD→COP:", usdCop);
+      } else {
+        console.warn("⚠️ FX status:", r.status);
+      }
+    } catch (e) {
+      console.warn("⚠️ FX error:", e.message);
+    }
+
+    // Fallbacks
+    if (!Number.isFinite(wldUsd)) {
+      wldUsd = 0.76; // fallback WLD/USD
+      console.log("🔁 fallback WLD/USD =", wldUsd);
+    }
+    if (!Number.isFinite(usdCop)) {
+      usdCop = 3700; // fallback USD/COP
+      console.log("🔁 fallback USD/COP =", usdCop);
+    }
+
+    const wldCopBruto = wldUsd * usdCop;
+    const wldCopUsuario = wldCopBruto * (1 - SPREAD);
+
+    const ratePayload = {
+      ok: true,
+      wld_usd: Number(wldUsd.toFixed(6)),
+      usd_cop: Number(usdCop.toFixed(2)),
+      wld_cop_bruto: Number(wldCopBruto.toFixed(2)),
+      wld_cop_usuario: Number(wldCopUsuario.toFixed(2)),
+      spread_percent: SPREAD * 100,
+      fuente: "Binance + ExchangeRate.host (cache y fallback)",
+      fecha: new Date().toISOString(),
+    };
+
+    cachedRate = ratePayload;
+    lastFetchTime = now;
+
+    console.log("✅ /api/rate actualizado:", ratePayload);
+    res.json(ratePayload);
+  } catch (err) {
+    console.error("💥 /api/rate error:", err.message);
+    res.status(500).json({ ok: false, error: "Error obteniendo tasa", detalle: err.message });
+  }
+});
+
+// ==============================
+// 🧾 ÓRDENES
+// ==============================
+app.post("/api/orders", (req, res) => {
+  try {
+    const { nombre, correo, banco, titular, numero, montoWLD, montoCOP } = req.body;
+    if (!nombre || !correo || !banco || !titular || !numero || !montoWLD || !montoCOP) {
+      return res.status(400).json({ ok: false, error: "Campos incompletos" });
+    }
+
+    const store = readStore();
+    const nueva = {
+      id: ++store.lastId,
+      nombre: String(nombre).trim(),
+      correo: String(correo).trim(),
+      banco: String(banco).trim(),
+      titular: String(titular).trim(),
+      numero: String(numero).trim(),
+      montoWLD: Number(montoWLD),
+      montoCOP: Number(montoCOP),
+      walletDestino: WALLET_DESTINO,
+      estado: "pendiente",
+      tx_hash: null,
+      creada_en: new Date().toISOString(),
+      actualizada_en: new Date().toISOString(),
+      status_history: [{ at: new Date().toISOString(), to: "pendiente" }],
+    };
+
+    store.orders.unshift(nueva);
+    writeStore(store);
+
+    if (TEST_MODE) {
+      const refreshed = readStore();
+      const idx = refreshed.orders.findIndex((o) => o.id === nueva.id);
+      if (idx !== -1) {
+        refreshed.orders[idx].estado = "enviada";
+        refreshed.orders[idx].tx_hash = `SIMULATED_TX_${Date.now()}`;
+        refreshed.orders[idx].status_history.push({
+          at: new Date().toISOString(),
+          to: "enviada",
+        });
+        refreshed.orders[idx].actualizada_en = new Date().toISOString();
+        writeStore(refreshed);
+      }
+    }
+
+    const finalStore = readStore();
+    const finalOrder = finalStore.orders.find((o) => o.id === nueva.id);
+    res.json({ ok: true, orden: finalOrder });
+  } catch (e) {
+    console.error("❌ create order:", e.message);
+    res.status(500).json({ ok: false, error: "Error interno" });
+  }
+});
+
+app.get("/api/orders/:id", (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: "ID inválido" });
+
+  const store = readStore();
+  const orden = store.orders.find((o) => o.id === id);
+  if (!orden) return res.status(404).json({ error: "Orden no encontrada" });
+  res.json(orden);
+});
+
+app.get("/api/orders-admin", (req, res) => {
+  const pin = (req.query.pin || "").trim();
+  if (pin !== OPERATOR_PIN) return res.status(403).json({ error: "PIN inválido" });
+
+  const store = readStore();
+  res.json(store.orders);
+});
+
+app.put("/api/orders/:id/estado", (req, res) => {
+  const pin = (req.body?.pin || "").trim();
+  if (pin !== OPERATOR_PIN) return res.status(403).json({ error: "PIN inválido" });
+
+  const id = Number(req.params.id);
+  const estado = (req.body?.estado || "").trim();
+
+  const validos = ["pendiente", "enviada", "recibida_wld", "pagada", "rechazada"];
+  if (!validos.includes(estado)) return res.status(400).json({ error: "Estado inválido" });
+
+  const store = readStore();
+  const idx = store.orders.findIndex((o) => o.id === id);
+  if (idx === -1) return res.status(404).json({ error: "Orden no encontrada" });
+
+  const orden = store.orders[idx];
+  if (!Array.isArray(orden.status_history)) orden.status_history = [];
+
+  orden.estado = estado;
+  orden.status_history.push({ at: new Date().toISOString(), to: estado });
+  orden.actualizada_en = new Date().toISOString();
+
+  if (estado === "pagada" && !orden.tx_hash) {
+    orden.tx_hash = `TX_CONFIRMED_${Date.now()}`;
+  }
+
+  store.orders[idx] = orden;
+  writeStore(store);
+
+  console.log(`✅ Orden #${id} -> ${estado}`);
+  res.json({ ok: true, orden });
+});
+
+// ========= 404 =========
+app.use((_, res) => res.status(404).json({ error: "Ruta no encontrada" }));
+
+// ========= START =========
+app.listen(PORT, () => {
+  console.log(`🚀 Backend listo en puerto ${PORT} (TEST_MODE=${TEST_MODE})`);
+});
