@@ -240,30 +240,30 @@ function App() {
               {/* Verificación World ID (opcional) */}
               <div className="mt-5">
                 <IDKitWidget
-                  app_id="app_123456789" // reemplázalo por tu app_id real
-                  action="verify-changeWLD"
-                  onSuccess={(result) =>
-                    console.log("✅ Verificado con World ID:", result)
-                  }
-                  onError={() =>
-                    Swal.fire(
-                      "Error",
-                      "No se pudo verificar tu identidad.",
-                      "error"
-                    )
-                  }
-                  credential_types={["orb", "phone"]}
-                  autoClose
-                >
-                  {({ open }) => (
-                    <button
-                      onClick={open}
-                      className="w-full text-xs mb-2 border border-indigo-200 text-indigo-600 py-2 rounded-xl font-semibold hover:bg-indigo-50 transition"
-                    >
-                      Verificar identidad con World ID 🌐 (opcional)
-                    </button>
-                  )}
-                </IDKitWidget>
+  app_id="app_fc346e88f08ed686748d6414d965f99"
+  action="verify-changewld"
+  verification_level="device" 
+  onSuccess={(result) => {
+    console.log("✅ Verificación exitosa:", result);
+    Swal.fire("Verificado", "Tu identidad fue verificada exitosamente.", "success");
+  }}
+  onError={(err) => {
+    console.error(err);
+    Swal.fire("Error", "No se pudo verificar tu identidad.", "error");
+  }}
+  credential_types={["orb", "phone"]}
+  autoClose
+>
+  {({ open }) => (
+    <button
+      onClick={open}
+      className="w-full text-xs mb-2 border border-indigo-200 text-indigo-600 py-2 rounded-xl font-semibold hover:bg-indigo-50 transition"
+    >
+      Verificar identidad con World ID 🌐
+    </button>
+  )}
+</IDKitWidget>
+
               </div>
 
               <button
