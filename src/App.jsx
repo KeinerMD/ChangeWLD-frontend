@@ -246,7 +246,7 @@ function App() {
                 <IDKitWidget
                   app_id="app_fc346e88f08ed686748d6414d965f99"
                   action="verify-changewld"
-                  verification_level="device"
+                  verification_level="orb"
                   onSuccess={async (result) => {
                     try {
                       const resp = await axios.post(
