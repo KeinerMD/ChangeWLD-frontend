@@ -1,40 +1,57 @@
+// src/components/VerifyWorldID.jsx
 import React from "react";
 import Swal from "sweetalert2";
 import { API_BASE } from "../apiConfig";
 
 export default function VerifyWorldID({ onVerified }) {
   const handleVerify = async () => {
-    // 1) Pedimos la verificación a World App
-    let vr;
     try {
-      if (!window.WorldApp) {
+      // 1) Comprobamos que estamos dentro de World App
+      if (typeof window === "undefined") {
         Swal.fire(
           "Verificación no disponible",
-          "Esta verificación solo funciona dentro de World App.",
+          "Esta verificación solo funciona dentro de un navegador.",
           "error"
         );
         return;
       }
 
-      vr = await window.WorldApp.requestVerification({
-        actionId: "verify-changewld-v2",
+      const wa = window.WorldApp;
+
+      if (!wa) {
+        Swal.fire(
+          "No se detectó World App",
+          "Parece que esta versión se está abriendo en un navegador normal y no dentro de World App. Abre la mini-app desde World App usando el código QR del portal de developers.",
+          "error"
+        );
+        return;
+      }
+
+      // 👀 DEBUG: ver qué expone realmente World App
+      console.log("WorldApp object:", wa);
+      console.log("WorldApp keys:", Object.keys(wa || {}));
+
+      if (typeof wa.requestVerification !== "function") {
+        Swal.fire(
+          "Función de verificación no disponible",
+          "World App está presente, pero no expone el método `requestVerification` en window.WorldApp.\n\n" +
+            "Eso suele significar que:\n" +
+            "• Estás en una versión de World App que aún no soporta este API, o\n" +
+            "• El SDK cambió el nombre del método.\n\n" +
+            "Revisa la documentación de mini-apps para confirmar el nombre exacto de la función de verificación.",
+          "error"
+        );
+        return;
+      }
+
+      // 2) Pedimos la verificación al bridge de World App
+      const vr = await wa.requestVerification({
+        actionId: "verify-changewld-v2", // debe coincidir con el IDENTIFIER de tu acción
       });
 
       console.log("✅ verification_response desde WorldApp:", vr);
-    } catch (error) {
-      console.error("❌ Error en requestVerification:", error);
-      Swal.fire(
-        "Error",
-        `World App no pudo generar la verificación.\n\nDetalle: ${error?.message || String(
-          error
-        )}`,
-        "error"
-      );
-      return;
-    }
 
-    // 2) Enviamos la prueba al backend
-    try {
+      // 3) Enviamos la prueba a tu backend para que la valide con Worldcoin
       const resp = await fetch(`${API_BASE}/api/verify-world-id`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -52,19 +69,27 @@ export default function VerifyWorldID({ onVerified }) {
       console.log("Respuesta del backend /api/verify-world-id:", data);
 
       if (data.ok && data.verified) {
-        Swal.fire("✔ Verificado", "Tu identidad fue confirmada correctamente.", "success");
+        Swal.fire(
+          "✔ Verificado",
+          "Tu identidad fue confirmada correctamente.",
+          "success"
+        );
         if (onVerified) onVerified();
       } else {
         Swal.fire(
           "❌ Verificación rechazada",
           data.error
-            ? `Código: ${data.error}\n\nDetalle: ${JSON.stringify(data.detail || "", null, 2)}`
-            : "Respuesta inválida del verificador",
+            ? `Código: ${data.error}\n\nDetalle: ${JSON.stringify(
+                data.detail || "",
+                null,
+                2
+              )}`
+            : "Respuesta inválida del verificador.",
           "error"
         );
       }
     } catch (error) {
-      console.error("❌ Error llamando al backend:", error);
+      console.error("❌ Error durante la verificación:", error);
       Swal.fire(
         "Error",
         `Hubo un problema durante la verificación.\n\nDetalle: ${
