@@ -4,6 +4,8 @@ import { API_BASE } from "../apiConfig";
 
 export default function VerifyWorldID({ onVerified }) {
   const handleVerify = async () => {
+    // 1) Pedimos la verificación a World App
+    let vr;
     try {
       if (!window.WorldApp) {
         Swal.fire(
@@ -14,14 +16,25 @@ export default function VerifyWorldID({ onVerified }) {
         return;
       }
 
-      // 1️⃣ Pedir verificación a World App (nivel: device, según tu acción)
-      const vr = await window.WorldApp.requestVerification({
+      vr = await window.WorldApp.requestVerification({
         actionId: "verify-changewld-v2",
       });
 
-      console.log("verification_response desde WorldApp:", vr);
+      console.log("✅ verification_response desde WorldApp:", vr);
+    } catch (error) {
+      console.error("❌ Error en requestVerification:", error);
+      Swal.fire(
+        "Error",
+        `World App no pudo generar la verificación.\n\nDetalle: ${error?.message || String(
+          error
+        )}`,
+        "error"
+      );
+      return;
+    }
 
-      // 2️⃣ Enviar datos mínimos al backend
+    // 2) Enviamos la prueba al backend
+    try {
       const resp = await fetch(`${API_BASE}/api/verify-world-id`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -36,20 +49,29 @@ export default function VerifyWorldID({ onVerified }) {
       });
 
       const data = await resp.json();
+      console.log("Respuesta del backend /api/verify-world-id:", data);
 
       if (data.ok && data.verified) {
         Swal.fire("✔ Verificado", "Tu identidad fue confirmada correctamente.", "success");
         if (onVerified) onVerified();
       } else {
         Swal.fire(
-          "❌ Verificación fallida",
-          data.error || "Respuesta inválida del verificador",
+          "❌ Verificación rechazada",
+          data.error
+            ? `Código: ${data.error}\n\nDetalle: ${JSON.stringify(data.detail || "", null, 2)}`
+            : "Respuesta inválida del verificador",
           "error"
         );
       }
     } catch (error) {
-      console.error("Error en verificación:", error);
-      Swal.fire("Error", "Hubo un problema durante la verificación.", "error");
+      console.error("❌ Error llamando al backend:", error);
+      Swal.fire(
+        "Error",
+        `Hubo un problema durante la verificación.\n\nDetalle: ${
+          error?.message || String(error)
+        }`,
+        "error"
+      );
     }
   };
 
