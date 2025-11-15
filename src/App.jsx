@@ -4,8 +4,8 @@ import axios from "axios";
 import { API_BASE } from "./apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
-import VerifyWorldID from "./components/VerifyWorldID";
 import BankSelector from "./components/BankSelector";
+import VerifyWorldID from "./components/VerifyWorldID";
 
 function App() {
   const [step, setStep] = useState(1);
@@ -14,8 +14,9 @@ function App() {
   const [orderInfo, setOrderInfo] = useState(null);
   const [hasShownPaidAlert, setHasShownPaidAlert] = useState(false);
 
-  // 🔒 Estado de verificación con World ID
+  // 🔒 Verificación World ID
   const [isVerified, setIsVerified] = useState(false);
+  const [verificationNullifier, setVerificationNullifier] = useState(null);
 
   // ========= FORMULARIOS =========
   const [montoWLD, setMontoWLD] = useState("");
@@ -25,7 +26,7 @@ function App() {
     numero: "",
   });
 
-  // ========= 1) CARGAR TASA =========
+  // ========= 1) CARGAR TASA DESDE BACKEND =========
   useEffect(() => {
     axios
       .get(`${API_BASE}/api/rate`)
@@ -35,7 +36,7 @@ function App() {
       );
   }, []);
 
-  // ========= 2) AUTO REFRESH ORDEN =========
+  // ========= 2) AUTO-REFRESH DE ORDEN CADA 5s =========
   useEffect(() => {
     if (!orderId) return;
 
@@ -49,7 +50,7 @@ function App() {
     return () => clearInterval(interval);
   }, [orderId]);
 
-  // ========= 3) ALERTA DE ORDEN PAGADA =========
+  // ========= 3) ALERTA CUANDO ESTÉ PAGADA =========
   useEffect(() => {
     if (orderInfo && orderInfo.estado === "pagada" && !hasShownPaidAlert) {
       setHasShownPaidAlert(true);
@@ -60,6 +61,14 @@ function App() {
       );
     }
   }, [orderInfo, hasShownPaidAlert]);
+
+  // ========= CALLBACK CUANDO SE VERIFICA (real o modo pruebas) =========
+  const handleWorldIdVerified = (nullifierValue) => {
+    setIsVerified(true);
+    setVerificationNullifier(
+      nullifierValue || "device-test-nullifier-changewld"
+    );
+  };
 
   // ========= ETAPA 1: CONFIRMAR MONTO =========
   const handleStep1 = () => {
@@ -80,10 +89,19 @@ function App() {
     setStep(2);
   };
 
-  // ========= ETAPA 2: CREAR ORDEN =========
+  // ========= ETAPA 2: CONFIRMAR DATOS BANCARIOS Y CREAR ORDEN =========
   const handleStep2 = async () => {
     if (!bankData.banco || !bankData.titular || !bankData.numero) {
       Swal.fire("Campos incompletos", "Llena todos los campos.", "warning");
+      return;
+    }
+
+    if (!verificationNullifier) {
+      Swal.fire(
+        "Error",
+        "No se detectó la verificación World ID. Intenta nuevamente.",
+        "error"
+      );
       return;
     }
 
@@ -98,12 +116,15 @@ function App() {
 
     try {
       const res = await axios.post(`${API_BASE}/api/orders`, {
+        nombre: bankData.titular,
+        correo: "no-email@changewld.com",
         banco: bankData.banco,
         titular: bankData.titular,
         numero: bankData.numero,
         montoWLD: Number(montoWLD),
         montoCOP: Number(montoCOP.toFixed(2)),
         verified: isVerified,
+        nullifier: verificationNullifier,
       });
 
       Swal.close();
@@ -113,7 +134,11 @@ function App() {
         setOrderInfo(res.data.orden);
         setStep(3);
       } else {
-        Swal.fire("Error", res.data?.error || "No se pudo crear la orden.", "error");
+        Swal.fire(
+          "Error",
+          res.data?.error || "No se pudo crear la orden.",
+          "error"
+        );
       }
     } catch (err) {
       Swal.close();
@@ -152,7 +177,9 @@ function App() {
       >
         {/* HEADER */}
         <div className="mb-5 text-center">
-          <h1 className="text-3xl font-bold text-indigo-700 mb-1">💱 ChangeWLD</h1>
+          <h1 className="text-3xl font-bold text-indigo-700 mb-1">
+            💱 ChangeWLD
+          </h1>
           <p className="text-xs text-gray-400 uppercase tracking-widest">
             Cambia tus WLD a COP de forma segura
           </p>
@@ -184,8 +211,9 @@ function App() {
 
         {/* CONTENIDO */}
         <AnimatePresence mode="wait">
-
-          {/* ============ ETAPA 1 ============ */}
+          {/* ============================
+              ETAPA 1 — MONTO + WORLD ID
+          ============================ */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -199,7 +227,9 @@ function App() {
               </p>
 
               <div className="mb-4">
-                <label className="block text-sm text-gray-600 mb-1">Monto en WLD</label>
+                <label className="block text-sm text-gray-600 mb-1">
+                  Monto en WLD
+                </label>
                 <input
                   type="number"
                   min="0"
@@ -215,7 +245,9 @@ function App() {
                 <p className="text-sm text-gray-600">Tasa actual:</p>
                 <p className="text-lg font-bold text-indigo-700">
                   {rate?.wld_cop_usuario
-                    ? `${rate.wld_cop_usuario.toLocaleString("es-CO")} COP por 1 WLD`
+                    ? `${rate.wld_cop_usuario.toLocaleString(
+                        "es-CO"
+                      )} COP por 1 WLD`
                     : "Cargando..."}
                 </p>
 
@@ -227,8 +259,23 @@ function App() {
                 </p>
               </div>
 
-              {/* 🔥 NUEVA VERIFICACIÓN MINIAPP */}
-              <VerifyWorldID onVerified={() => setIsVerified(true)} />
+              {/* WORLD ID (device / modo pruebas) */}
+              <div className="mt-5">
+                <VerifyWorldID onVerified={handleWorldIdVerified} />
+
+                <p className="mt-2 text-xs text-center">
+                  Estado verificación:{" "}
+                  {isVerified ? (
+                    <span className="text-emerald-600 font-semibold">
+                      ✔ Verificado
+                    </span>
+                  ) : (
+                    <span className="text-red-500 font-semibold">
+                      ✖ Pendiente
+                    </span>
+                  )}
+                </p>
+              </div>
 
               <button
                 onClick={handleStep1}
@@ -239,7 +286,9 @@ function App() {
             </motion.div>
           )}
 
-          {/* ============ ETAPA 2 ============ */}
+          {/* ============================
+              ETAPA 2 — DATOS BANCARIOS
+          ============================ */}
           {step === 2 && (
             <motion.div
               key="step2"
@@ -308,7 +357,9 @@ function App() {
             </motion.div>
           )}
 
-          {/* ============ ETAPA 3 ============ */}
+          {/* ============================
+              ETAPA 3 — ESTADO DE ORDEN
+          ============================ */}
           {step === 3 && (
             <motion.div
               key="step3"
@@ -341,6 +392,7 @@ function App() {
                   setOrderId(null);
                   setOrderInfo(null);
                   setIsVerified(false);
+                  setVerificationNullifier(null);
                   setHasShownPaidAlert(false);
                 }}
                 className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
@@ -349,7 +401,6 @@ function App() {
               </button>
             </motion.div>
           )}
-
         </AnimatePresence>
       </motion.div>
     </div>
