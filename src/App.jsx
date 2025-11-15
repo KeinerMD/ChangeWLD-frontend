@@ -4,7 +4,7 @@ import axios from "axios";
 import { API_BASE } from "./apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
-import { IDKitWidget } from "@worldcoin/idkit";
+import VerifyWorldID from "./components/VerifyWorldID";
 import BankSelector from "./components/BankSelector";
 
 function App() {
@@ -14,9 +14,8 @@ function App() {
   const [orderInfo, setOrderInfo] = useState(null);
   const [hasShownPaidAlert, setHasShownPaidAlert] = useState(false);
 
-  // 🔒 Verificación World ID
+  // 🔒 Estado de verificación con World ID
   const [isVerified, setIsVerified] = useState(false);
-  const [verificationNullifier, setVerificationNullifier] = useState(null);
 
   // ========= FORMULARIOS =========
   const [montoWLD, setMontoWLD] = useState("");
@@ -26,7 +25,7 @@ function App() {
     numero: "",
   });
 
-  // ========= 1) CARGAR TASA DESDE BACKEND =========
+  // ========= 1) CARGAR TASA =========
   useEffect(() => {
     axios
       .get(`${API_BASE}/api/rate`)
@@ -36,7 +35,7 @@ function App() {
       );
   }, []);
 
-  // ========= 2) AUTO-REFRESH DE ORDEN CADA 5s =========
+  // ========= 2) AUTO REFRESH ORDEN =========
   useEffect(() => {
     if (!orderId) return;
 
@@ -50,7 +49,7 @@ function App() {
     return () => clearInterval(interval);
   }, [orderId]);
 
-  // ========= 3) ALERTA CUANDO ESTÉ PAGADA =========
+  // ========= 3) ALERTA DE ORDEN PAGADA =========
   useEffect(() => {
     if (orderInfo && orderInfo.estado === "pagada" && !hasShownPaidAlert) {
       setHasShownPaidAlert(true);
@@ -81,19 +80,10 @@ function App() {
     setStep(2);
   };
 
-  // ========= ETAPA 2: CONFIRMAR DATOS BANCARIOS Y CREAR ORDEN =========
+  // ========= ETAPA 2: CREAR ORDEN =========
   const handleStep2 = async () => {
     if (!bankData.banco || !bankData.titular || !bankData.numero) {
       Swal.fire("Campos incompletos", "Llena todos los campos.", "warning");
-      return;
-    }
-
-    if (!verificationNullifier) {
-      Swal.fire(
-        "Error",
-        "No se detectó la verificación World ID. Intenta nuevamente.",
-        "error"
-      );
       return;
     }
 
@@ -108,15 +98,12 @@ function App() {
 
     try {
       const res = await axios.post(`${API_BASE}/api/orders`, {
-        nombre: bankData.titular,
-        correo: "no-email@changewld.com",
         banco: bankData.banco,
         titular: bankData.titular,
         numero: bankData.numero,
         montoWLD: Number(montoWLD),
         montoCOP: Number(montoCOP.toFixed(2)),
         verified: isVerified,
-        nullifier: verificationNullifier,
       });
 
       Swal.close();
@@ -197,9 +184,8 @@ function App() {
 
         {/* CONTENIDO */}
         <AnimatePresence mode="wait">
-          {/* ============================
-              ETAPA 1 — MONTO + WORLD ID
-          ============================ */}
+
+          {/* ============ ETAPA 1 ============ */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -241,54 +227,8 @@ function App() {
                 </p>
               </div>
 
-              {/* WORLD ID */}
-              <div className="mt-5">
-                <IDKitWidget
-                  app_id="app_fc346e88f08ed686748d6414d965f99"
-                  action="verify-changewld-v2"
-                  verification_level="orb"
-                  onSuccess={async (result) => {
-                    try {
-                      const resp = await axios.post(
-                        `${API_BASE}/api/verify-world-id`,
-                        {
-                          proof: result.proof,
-                          merkle_root: result.merkle_root,
-                          nullifier_hash: result.nullifier_hash,
-                          verification_level: result.verification_level,
-                          action: "verify-changewld",
-                        }
-                      );
-
-                      if (resp.data?.ok) {
-                        setVerificationNullifier(result.nullifier_hash);
-                        setIsVerified(true);
-
-                        Swal.fire(
-                          "✔ Verificado",
-                          "Tu identidad fue confirmada correctamente.",
-                          "success"
-                        );
-                      } else {
-                        Swal.fire("Error", "Verificación inválida.", "error");
-                      }
-                    } catch (err) {
-                      Swal.fire("Error", "Hubo un problema verificando.", "error");
-                    }
-                  }}
-                  credential_types={["orb", "phone"]}
-                  autoClose
-                >
-                  {({ open }) => (
-                    <button
-                      onClick={open}
-                      className="w-full border border-indigo-200 py-2 mt-2 rounded-xl text-indigo-600 font-semibold"
-                    >
-                      Verificar identidad con World ID 🌐
-                    </button>
-                  )}
-                </IDKitWidget>
-              </div>
+              {/* 🔥 NUEVA VERIFICACIÓN MINIAPP */}
+              <VerifyWorldID onVerified={() => setIsVerified(true)} />
 
               <button
                 onClick={handleStep1}
@@ -299,9 +239,7 @@ function App() {
             </motion.div>
           )}
 
-          {/* ============================
-              ETAPA 2 — DATOS BANCARIOS
-          ============================ */}
+          {/* ============ ETAPA 2 ============ */}
           {step === 2 && (
             <motion.div
               key="step2"
@@ -370,9 +308,7 @@ function App() {
             </motion.div>
           )}
 
-          {/* ============================
-              ETAPA 3 — ESTADO DE ORDEN
-          ============================ */}
+          {/* ============ ETAPA 3 ============ */}
           {step === 3 && (
             <motion.div
               key="step3"
@@ -405,7 +341,6 @@ function App() {
                   setOrderId(null);
                   setOrderInfo(null);
                   setIsVerified(false);
-                  setVerificationNullifier(null);
                   setHasShownPaidAlert(false);
                 }}
                 className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
@@ -414,6 +349,7 @@ function App() {
               </button>
             </motion.div>
           )}
+
         </AnimatePresence>
       </motion.div>
     </div>
