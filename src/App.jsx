@@ -14,7 +14,7 @@ function App() {
   const [orderInfo, setOrderInfo] = useState(null);
   const [hasShownPaidAlert, setHasShownPaidAlert] = useState(false);
 
-  // 🔒 Verificación World ID
+  // 🔒 Estado de verificación World ID (incognito action)
   const [isVerified, setIsVerified] = useState(false);
   const [verificationNullifier, setVerificationNullifier] = useState(null);
 
@@ -62,12 +62,30 @@ function App() {
     }
   }, [orderInfo, hasShownPaidAlert]);
 
-  // ========= CALLBACK CUANDO SE VERIFICA (real o modo pruebas) =========
-  const handleWorldIdVerified = (nullifierValue) => {
+  // ========= CALLBACK CUANDO SE VERIFICA (MiniKit verify / modo pruebas) =========
+  /**
+   * onVerified puede enviarnos:
+   *  - un string con el nullifier_hash
+   *  - o un objeto tipo MiniAppVerifyActionSuccessPayload (ISuccessResult)
+   *    { status, proof, merkle_root, nullifier_hash, verification_level, version }
+   */
+  const handleWorldIdVerified = (payload) => {
     setIsVerified(true);
-    setVerificationNullifier(
-      nullifierValue || "device-test-nullifier-changewld"
-    );
+
+    let nullifier = null;
+
+    if (typeof payload === "string") {
+      nullifier = payload;
+    } else if (payload && typeof payload === "object") {
+      nullifier = payload.nullifier_hash || payload.nullifier;
+    }
+
+    // Fallback en modo pruebas
+    if (!nullifier) {
+      nullifier = "device-test-nullifier-changewld";
+    }
+
+    setVerificationNullifier(nullifier);
   };
 
   // ========= ETAPA 1: CONFIRMAR MONTO =========
@@ -123,6 +141,7 @@ function App() {
         numero: bankData.numero,
         montoWLD: Number(montoWLD),
         montoCOP: Number(montoCOP.toFixed(2)),
+        // Datos de verificación (para que el backend pueda auditar si quieres)
         verified: isVerified,
         nullifier: verificationNullifier,
       });
@@ -259,7 +278,7 @@ function App() {
                 </p>
               </div>
 
-              {/* WORLD ID (device / modo pruebas) */}
+              {/* WORLD ID (MiniKit verify / modo pruebas) */}
               <div className="mt-5">
                 <VerifyWorldID onVerified={handleWorldIdVerified} />
 
