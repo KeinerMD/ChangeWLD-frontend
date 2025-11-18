@@ -2,94 +2,91 @@
 import React from "react";
 import Swal from "sweetalert2";
 import { API_BASE } from "../apiConfig";
-
-// Import directo del SDK (el Provider ya lo inicializa)
-import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
+import {
+  MiniKit,
+  VerificationLevel,
+} from "@worldcoin/minikit-js";
 
 export default function VerifyWorldID({ onVerified }) {
   const handleVerify = async () => {
     try {
-      // 1) ¿Estoy dentro de World App?
+      // 1) Comprobar que estamos dentro de World App
       if (!MiniKit.isInstalled()) {
-        const r = await Swal.fire({
-          icon: "warning",
-          title: "Abre ChangeWLD desde World App",
-          html:
-            "La verificación real solo funciona dentro de la World App como mini app.<br/><br/>" +
-            "Si estás probando en el navegador, puedes continuar en <b>modo pruebas</b> para simular la verificación.",
-          showCancelButton: true,
-          confirmButtonText: "Continuar en modo pruebas",
-          cancelButtonText: "Cancelar",
-        });
-
-        if (r.isConfirmed) {
-          onVerified?.("device-test-nullifier");
-          Swal.fire(
-            "Modo pruebas activo",
-            "Se marcó tu identidad como verificada solo para pruebas.",
-            "info"
-          );
-        }
-        return;
-      }
-
-      // 2) Construir el payload de verify (según docs)
-      const verifyPayload = {
-        action: "verify-changewld-v2",      // IDENTIFIER de tu Incognito Action
-        signal: "changewld-device",         // opcional
-        verification_level: VerificationLevel.Device, // Device por ahora
-      };
-
-      console.log("🚀 Enviando verify con payload:", verifyPayload);
-
-      // commandsAsync.verify -> devuelve { finalPayload }
-      const { finalPayload } = await MiniKit.commandsAsync.verify(verifyPayload);
-
-      console.log("✅ finalPayload:", finalPayload);
-
-      if (!finalPayload || finalPayload.status === "error") {
-        Swal.fire(
-          "Error",
-          "World App canceló o rechazó la verificación.",
+        await Swal.fire(
+          "Abre ChangeWLD desde World App",
+          "La verificación solo funciona dentro de World App (mini app).",
           "error"
         );
         return;
       }
 
-      // 3) Enviar la prueba a tu backend para validarla
+      // 2) Payload de verificación (según docs)
+      const verifyPayload = {
+        action: "verify-changewld-device",   // IDENTIFIER de tu acción
+        signal: "changewld-device",          // opcional, string cualquiera
+        verification_level: VerificationLevel.Device, // Device u Orb
+      };
+
+      console.log("⚙️ Enviando verify con payload:", verifyPayload);
+
+      // 3) Ejecutar comando verify en World App
+      const { finalPayload } = await MiniKit.commandsAsync.verify(verifyPayload);
+
+      console.log("✅ finalPayload devuelto por MiniKit:", finalPayload);
+
+      if (!finalPayload || finalPayload.status === "error") {
+        console.log("❌ Error en MiniKit.verify:", finalPayload);
+        await Swal.fire(
+          "Verificación rechazada",
+          "World App no pudo completar la verificación.",
+          "error"
+        );
+        return;
+      }
+
+      // 4) Mandar el proof al backend para que lo valide
       const resp = await fetch(`${API_BASE}/api/verify-world-id`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proof: finalPayload.proof,
-          merkle_root: finalPayload.merkle_root,
-          nullifier_hash: finalPayload.nullifier_hash,
-          verification_level: finalPayload.verification_level,
+          payload: finalPayload,               // ISuccessResult
           action: verifyPayload.action,
           signal: verifyPayload.signal,
         }),
       });
 
-      const data = await resp.json();
-      console.log("🔁 /api/verify-world-id:", resp.status, data);
+      const text = await resp.text();
+      console.log("📨 Respuesta cruda backend /verify-world-id:", resp.status, text);
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        // Aquí es donde antes salía el "Unexpected token '<'"
+        throw new Error(`Respuesta no JSON del backend: ${text.slice(0, 120)}...`);
+      }
 
       if (resp.ok && data.ok && data.verified) {
-        Swal.fire(
+        await Swal.fire(
           "✔ Verificado",
           "Tu identidad fue confirmada correctamente.",
           "success"
         );
-        onVerified?.(finalPayload.nullifier_hash || "device-nullifier");
+        // devolvemos el nullifier al padre (App.jsx)
+        onVerified?.(data.nullifier_hash || finalPayload.nullifier_hash);
       } else {
-        Swal.fire(
-          "❌ Verificación rechazada",
-          data?.error || "La prueba no fue válida.",
+        console.error("❌ Verificación rechazada en backend:", data);
+        await Swal.fire(
+          "Verificación rechazada",
+          data?.error
+            ? `Código: ${data.error}`
+            : "El servidor no aceptó la prueba enviada.",
           "error"
         );
       }
     } catch (error) {
       console.error("❌ Error durante la verificación:", error);
-      Swal.fire(
+      await Swal.fire(
         "Error",
         `Hubo un problema durante la verificación.\n\nDetalle: ${
           error?.message || String(error)
