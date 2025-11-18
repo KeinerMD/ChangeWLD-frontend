@@ -2,50 +2,56 @@
 import React from "react";
 import Swal from "sweetalert2";
 import { API_BASE } from "../apiConfig";
-import { MiniKit } from "@worldcoin/minikit-js";
+import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 
 export default function VerifyWorldID({ onVerified }) {
   const handleVerify = async () => {
     try {
-      // 1) Comprobamos si estamos dentro de World App (mini app)
-      if (!MiniKit.isInstalled()) {
-        // Aquí sí tiene sentido este mensaje
-        Swal.fire(
-          "Abre ChangeWLD desde World App",
-          "La verificación solo funciona dentro de la World App (mini app).",
-          "error"
+      // 👀 Solo para debug, no bloquea nada
+      try {
+        console.log(
+          "MiniKit presente:",
+          !!MiniKit,
+          "MiniKit.isInstalled():",
+          typeof MiniKit?.isInstalled === "function"
+            ? MiniKit.isInstalled()
+            : "no disponible"
         );
-        return;
-      }
+        // También podemos ver si World App inyectó algo viejo
+        console.log("window.WorldApp:", window.WorldApp || "no definido");
+      } catch (_) {}
 
-      // 2) Definimos el payload del comando verify
+      // 📦 Payload según docs de /mini-apps/commands/verify
       const verifyPayload = {
-        // IDENTIFIER de tu acción de incógnito
-        action: "verify-changewld-v2",
-        signal: "changewld", // opcional
-        // Puedes usar "device" o "orb" según lo que configuraste en el portal
-        verification_level: "device",
+        action: "verify-changewld-v2", // IDENTIFIER de tu acción de incognito
+        signal: "changewld-device",    // opcional, pero útil para tracking
+        verification_level: VerificationLevel.Device, // Device por ahora
       };
 
-      // 3) Lanzamos el comando verify en World App
+      // 🚀 Lanzar comando a World App
       const { finalPayload } = await MiniKit.commandsAsync.verify(verifyPayload);
 
-      console.log("🔹 finalPayload desde MiniKit:", finalPayload);
+      console.log("✅ finalPayload recibido de World App:", finalPayload);
 
+      // Usuario canceló o algo salió mal del lado de World App
       if (!finalPayload || finalPayload.status === "error") {
-        console.log("❌ Error payload:", finalPayload);
         Swal.fire(
           "Error",
-          "World App no pudo completar la verificación.",
+          "World App canceló o falló la verificación.",
           "error"
         );
         return;
       }
 
-      // 4) Verificamos el proof en tu backend (OBLIGATORIO)
+      // finalPayload tiene la forma:
+      // { status:'success', proof, merkle_root, nullifier_hash, verification_level, version }
+
+      // 🔐 Verificar la prueba en tu backend
       const resp = await fetch(`${API_BASE}/api/verify-world-id`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           proof: finalPayload.proof,
           merkle_root: finalPayload.merkle_root,
@@ -57,7 +63,7 @@ export default function VerifyWorldID({ onVerified }) {
       });
 
       const data = await resp.json();
-      console.log("🔹 Respuesta backend /api/verify-world-id:", resp.status, data);
+      console.log("Respuesta backend /api/verify-world-id:", resp.status, data);
 
       if (resp.ok && data.ok && data.verified) {
         Swal.fire(
@@ -65,55 +71,39 @@ export default function VerifyWorldID({ onVerified }) {
           "Tu identidad fue confirmada correctamente.",
           "success"
         );
+        // Guardamos el nullifier en el front
+        onVerified?.(finalPayload.nullifier_hash);
+      } else {
+        Swal.fire(
+          "❌ Verificación rechazada",
+          data?.error || "La prueba no fue válida.",
+          "error"
+        );
+      }
+    } catch (error) {
+      console.error("❌ Error durante la verificación:", error);
+      const msg = String(error?.message || error || "");
 
-        // Le pasamos al App.jsx el payload completo,
-        // para que saque el nullifier_hash y marque isVerified=true
-        onVerified?.(finalPayload);
+      // 🔎 Errores típicos cuando NO estamos realmente dentro de World App
+      if (
+        msg.toLowerCase().includes("provider not found") ||
+        msg.toLowerCase().includes("minikit is not installed") ||
+        msg.toLowerCase().includes("no provider")
+      ) {
+        Swal.fire(
+          "Abre ChangeWLD desde World App",
+          "La verificación solo funciona dentro de la World App (mini app).",
+          "error"
+        );
         return;
       }
 
-      // Si llegó aquí, el backend rechazó la prueba
+      // Cualquier otro error genérico
       Swal.fire(
-        "❌ Verificación rechazada",
-        data?.error
-          ? `Código: ${data.error}\n\nDetalle: ${JSON.stringify(
-              data.detail || "",
-              null,
-              2
-            )}`
-          : "La prueba no fue válida.",
+        "Error",
+        `Hubo un problema durante la verificación.\n\nDetalle: ${msg}`,
         "error"
       );
-    } catch (error) {
-      console.error("❌ Error durante la verificación:", error);
-
-      // 5) Fallback: modo pruebas (solo DEV)
-      const result = await Swal.fire({
-        icon: "warning",
-        title: "Error en la verificación",
-        html:
-          "Hubo un problema al verificar con World App.<br/><br/>" +
-          "<b>Modo pruebas:</b> si continúas, la app marcará tu identidad como 'verificada' <u>sin validación real</u>, " +
-          "solo para que puedas probar el flujo de órdenes.",
-        showCancelButton: true,
-        confirmButtonText: "Continuar en modo pruebas",
-        cancelButtonText: "Cancelar",
-      });
-
-      if (result.isConfirmed) {
-        onVerified?.("device-test-nullifier-changewld");
-        Swal.fire(
-          "Modo pruebas activo",
-          "Se ha marcado tu identidad como verificada SOLO para pruebas. No uses esto en producción.",
-          "info"
-        );
-      } else {
-        Swal.fire(
-          "Verificación cancelada",
-          "Intenta nuevamente más tarde.",
-          "info"
-        );
-      }
     }
   };
 
