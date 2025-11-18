@@ -3,7 +3,6 @@ import React from "react";
 import Swal from "sweetalert2";
 import { API_BASE } from "../apiConfig";
 
-// 👇 Importamos MiniKit y tipos
 import {
   MiniKit,
   VerificationLevel,
@@ -25,15 +24,17 @@ export default function VerifyWorldID({ onVerified }) {
 
       // 2) Construir el payload de verify
       const verifyPayload = {
-        action: "verify-changewld-v2", // 👈 usa EXACTAMENTE el "Identifier" de tu acción de incógnito
-        signal: "changewld-device",    // opcional, puedes dejar este string
-        verification_level: VerificationLevel.Device, // o .Orb si decides cambiar
+        action: "verify-changewld-v2", // IDENTIFIER de tu acción
+        signal: "changewld-device",
+        verification_level: VerificationLevel.Device, // Device
       };
 
       console.log("👉 Enviando comando verify con payload:", verifyPayload);
 
       // 3) Pedir a World App que genere la prueba
-      const { finalPayload } = await MiniKit.commandsAsync.verify(verifyPayload);
+      const { finalPayload } = await MiniKit.commandsAsync.verify(
+        verifyPayload
+      );
 
       console.log("🔹 finalPayload desde World App:", finalPayload);
 
@@ -48,21 +49,39 @@ export default function VerifyWorldID({ onVerified }) {
       }
 
       // 4) Enviar la prueba a tu backend para que verifique en la nube
-      const resp = await fetch(`${API_BASE}/api/verify-world-id`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          payload: finalPayload,               // ISuccessResult
-          action: verifyPayload.action,
-          signal: verifyPayload.signal,
-        }),
-      });
+      const url = `${API_BASE}/api/verify-world-id`;
+      console.log("🌐 Llamando al backend:", url);
+
+      let resp;
+      try {
+        resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            payload: finalPayload as ISuccessResult,
+            action: verifyPayload.action,
+            signal: verifyPayload.signal,
+          }),
+        });
+      } catch (networkErr) {
+        console.error("❌ Error de red al llamar al backend:", networkErr);
+        await Swal.fire(
+          "Error",
+          `No se pudo conectar con el servidor.\n\nDetalle: ${
+            networkErr?.message || String(networkErr)
+          }`,
+          "error"
+        );
+        return;
+      }
 
       let data;
       try {
         data = await resp.json();
-      } catch (e) {
-        console.error("❌ No se pudo parsear JSON del backend:", e);
+      } catch (parseErr) {
+        console.error("❌ No se pudo parsear JSON del backend:", parseErr);
+        const raw = await resp.text().catch(() => "");
+        console.log("Respuesta cruda del backend:", raw);
         await Swal.fire(
           "Error en el servidor",
           "El backend devolvió una respuesta no válida.",
@@ -76,13 +95,15 @@ export default function VerifyWorldID({ onVerified }) {
       if (!resp.ok || !data?.success) {
         await Swal.fire(
           "Verificación rechazada",
-          "El servidor no aceptó la prueba de World ID. Es posible que ya hayas verificado esta acción o que el proof sea inválido.",
+          data?.verifyRes?.code
+            ? `Código: ${data.verifyRes.code}`
+            : "El servidor no aceptó la prueba de World ID.",
           "error"
         );
         return;
       }
 
-      // 5) Todo OK → marcamos como verificado en el front
+      // 5) Todo OK → marcamos como verificado
       const nullifier =
         finalPayload.nullifier_hash || data.verifyRes?.nullifier_hash;
 
