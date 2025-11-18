@@ -2,55 +2,61 @@
 import React from "react";
 import Swal from "sweetalert2";
 import { API_BASE } from "../apiConfig";
-import { MiniKit as ImportedMiniKit, VerificationLevel } from "@worldcoin/minikit-js";
+
+// Import directo del SDK (el Provider ya lo inicializa)
+import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 
 export default function VerifyWorldID({ onVerified }) {
   const handleVerify = async () => {
     try {
-      // 1) Detectar MiniKit desde import o desde window
-      const mk =
-        (typeof ImportedMiniKit !== "undefined" && ImportedMiniKit) ||
-        (typeof window !== "undefined" && window.MiniKit) ||
-        null;
+      // 1) ¿Estoy dentro de World App?
+      if (!MiniKit.isInstalled()) {
+        const r = await Swal.fire({
+          icon: "warning",
+          title: "Abre ChangeWLD desde World App",
+          html:
+            "La verificación real solo funciona dentro de la World App como mini app.<br/><br/>" +
+            "Si estás probando en el navegador, puedes continuar en <b>modo pruebas</b> para simular la verificación.",
+          showCancelButton: true,
+          confirmButtonText: "Continuar en modo pruebas",
+          cancelButtonText: "Cancelar",
+        });
 
-      console.log("🔍 ImportedMiniKit:", ImportedMiniKit);
-      console.log("🔍 window.MiniKit:", typeof window !== "undefined" ? window.MiniKit : "no-window");
-      console.log("🔍 mk usado:", mk);
-
-      if (!mk) {
-        // Si NO hay MiniKit en absoluto, mostramos mensaje claro
-        Swal.fire(
-          "MiniKit no detectado",
-          "No se encontró el SDK de World App (MiniKit). Asegúrate de abrir ChangeWLD desde la World App como mini app.",
-          "error"
-        );
+        if (r.isConfirmed) {
+          onVerified?.("device-test-nullifier");
+          Swal.fire(
+            "Modo pruebas activo",
+            "Se marcó tu identidad como verificada solo para pruebas.",
+            "info"
+          );
+        }
         return;
       }
 
-      // 2) Payload según docs de /mini-apps/commands/verify
+      // 2) Construir el payload de verify (según docs)
       const verifyPayload = {
-        action: "verify-changewld-v2", // IDENTIFIER de tu acción incognito
-        signal: "changewld-device",    // opcional
+        action: "verify-changewld-v2",      // IDENTIFIER de tu Incognito Action
+        signal: "changewld-device",         // opcional
         verification_level: VerificationLevel.Device, // Device por ahora
       };
 
-      console.log("🚀 Enviando comando verify con payload:", verifyPayload);
+      console.log("🚀 Enviando verify con payload:", verifyPayload);
 
-      // 3) Lanzar comando asíncrono a World App
-      const { finalPayload } = await mk.commandsAsync.verify(verifyPayload);
+      // commandsAsync.verify -> devuelve { finalPayload }
+      const { finalPayload } = await MiniKit.commandsAsync.verify(verifyPayload);
 
-      console.log("✅ finalPayload recibido de World App:", finalPayload);
+      console.log("✅ finalPayload:", finalPayload);
 
       if (!finalPayload || finalPayload.status === "error") {
         Swal.fire(
           "Error",
-          "World App canceló o falló la verificación.",
+          "World App canceló o rechazó la verificación.",
           "error"
         );
         return;
       }
 
-      // 4) Enviar al backend para verificar la prueba
+      // 3) Enviar la prueba a tu backend para validarla
       const resp = await fetch(`${API_BASE}/api/verify-world-id`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -65,7 +71,7 @@ export default function VerifyWorldID({ onVerified }) {
       });
 
       const data = await resp.json();
-      console.log("🔁 Respuesta backend /api/verify-world-id:", resp.status, data);
+      console.log("🔁 /api/verify-world-id:", resp.status, data);
 
       if (resp.ok && data.ok && data.verified) {
         Swal.fire(
@@ -73,7 +79,7 @@ export default function VerifyWorldID({ onVerified }) {
           "Tu identidad fue confirmada correctamente.",
           "success"
         );
-        onVerified?.(finalPayload.nullifier_hash || "device-nullifier-test");
+        onVerified?.(finalPayload.nullifier_hash || "device-nullifier");
       } else {
         Swal.fire(
           "❌ Verificación rechazada",
@@ -83,25 +89,11 @@ export default function VerifyWorldID({ onVerified }) {
       }
     } catch (error) {
       console.error("❌ Error durante la verificación:", error);
-      const msg = String(error?.message || error || "");
-
-      // Errores típicos cuando el provider no está disponible
-      if (
-        msg.toLowerCase().includes("provider not found") ||
-        msg.toLowerCase().includes("minikit is not installed") ||
-        msg.toLowerCase().includes("no provider")
-      ) {
-        Swal.fire(
-          "Abre ChangeWLD desde World App",
-          "La verificación solo funciona dentro de la World App (mini app).",
-          "error"
-        );
-        return;
-      }
-
       Swal.fire(
         "Error",
-        `Hubo un problema durante la verificación.\n\nDetalle: ${msg}`,
+        `Hubo un problema durante la verificación.\n\nDetalle: ${
+          error?.message || String(error)
+        }`,
         "error"
       );
     }
