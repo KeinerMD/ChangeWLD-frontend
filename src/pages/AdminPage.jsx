@@ -671,42 +671,54 @@ function AdminPage() {
                               </div>
 
                               {/* ESTADO + ACCIONES */}
-                              <div className="flex flex-col items-end gap-2 mt-1 md:mt-0 md:w-56">
-                                <span
-                                  className={`px-3 py-1 border text-[11px] rounded-full text-slate-900 font-semibold ${
-                                    meta?.colorBadge ||
-                                    "bg-slate-200 text-slate-900 border-slate-300"
-                                  }`}
-                                >
-                                  {meta?.short || o.estado.toUpperCase()}
-                                </span>
+                              <span
+  className={`px-4 py-1.5 border text-xs md:text-sm rounded-full text-slate-900 font-semibold ${
+    meta?.colorBadge ||
+    "bg-slate-200 text-slate-900 border-slate-300"
+  }`}
+>
+  {meta?.short || o.estado.toUpperCase()}
+</span>
 
-                                <div className="flex flex-wrap gap-2 justify-end">
-                                  {getNextStates(o.estado).map((estadoSig) => {
-                                    const m = STATUS_META[estadoSig];
-                                    const labelBtn =
-                                      m?.short || estadoSig.toUpperCase();
-                                    const base =
-                                      estadoSig === "pagada"
-                                        ? "bg-emerald-600 hover:bg-emerald-500"
-                                        : estadoSig === "rechazada"
-                                        ? "bg-red-600 hover:bg-red-500"
-                                        : "bg-sky-600 hover:bg-sky-500";
 
-                                    return (
-                                      <button
-                                        key={estadoSig}
-                                        onClick={() =>
-                                          handleChangeEstado(o.id, estadoSig)
-                                        }
-                                        className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
-                                      >
-                                        {labelBtn}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
+                                <div className="flex flex-wrap gap-3 justify-end">
+  {getNextStates(o.estado).map((estadoSig) => {
+    const m = STATUS_META[estadoSig];
+    const labelBtn = m?.short || estadoSig.toUpperCase();
+    const base =
+      estadoSig === "pagada"
+        ? "bg-emerald-600 hover:bg-emerald-500"
+        : estadoSig === "rechazada"
+        ? "bg-red-600 hover:bg-red-500"
+        : "bg-sky-600 hover:bg-sky-500";
+
+    return (
+      <button
+        key={estadoSig}
+        onClick={() => handleChangeEstado(o.id, estadoSig)}
+        className={`
+          ${base}
+          text-white
+          text-xs md:text-sm
+          font-semibold
+          px-4 md:px-5
+          py-2
+          rounded-xl
+          shadow-md
+          transition-all
+          flex items-center gap-1
+        `}
+      >
+        {estadoSig === "enviada" && "📤"}
+        {estadoSig === "recibida_wld" && "🟣"}
+        {estadoSig === "pagada" && "💸"}
+        {estadoSig === "rechazada" && "❌"}
+        <span>{labelBtn}</span>
+      </button>
+    );
+  })}
+</div>
+
                             </div>
                           ))}
                         </div>
