@@ -28,13 +28,20 @@ function App() {
 
   // ========= 1) CARGAR TASA DESDE BACKEND =========
   useEffect(() => {
+  const fetchRate = () => {
     axios
       .get(`${API_BASE}/api/rate`)
       .then((res) => setRate(res.data))
-      .catch(() =>
-        Swal.fire("Error", "No se pudo obtener la tasa actual.", "error")
-      );
-  }, []);
+      .catch(() => {
+        /* puedes dejar el Swal o solo log para no molestar al usuario */
+      });
+  };
+
+  fetchRate(); // primera vez
+  const interval = setInterval(fetchRate, 60_000); // cada 60s
+
+  return () => clearInterval(interval);
+}, []);
 
   // ========= 2) AUTO-REFRESH DE ORDEN CADA 5s =========
   useEffect(() => {

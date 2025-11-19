@@ -572,6 +572,15 @@ function AdminPage() {
                                       </>
                                     )}
                                 </p>
+                                <p className="text-[11px] text-slate-500">
+  World ID:{" "}
+  {o.verified ? (
+    <span className="text-emerald-400 font-semibold">✔ Verificado</span>
+  ) : (
+    <span className="text-red-400 font-semibold">✖ Sin verificación</span>
+  )}
+</p>
+
                               </div>
 
                               {/* ESTADO + ACCIONES */}
