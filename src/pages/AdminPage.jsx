@@ -1,4 +1,3 @@
-// src/pages/AdminPage.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { API_BASE } from "../apiConfig";
@@ -63,51 +62,38 @@ function AdminPage() {
     "rechazada",
   ];
 
-  // ===== COPIAR NÚMERO DE CUENTA =====
-  const handleCopy = async (value) => {
-    const text = String(value || "").trim();
-    if (!text) {
-      Swal.fire("Sin número", "Esta orden no tiene número de cuenta.", "info");
-      return;
-    }
-
-    if (!navigator.clipboard) {
-      Swal.fire(
-        "No se pudo copiar",
-        "Tu navegador no permite copiar automáticamente. Copia el número manualmente.",
-        "warning"
-      );
-      return;
-    }
-
+  // ===== helper copiar número de cuenta =====
+  const handleCopy = async (text) => {
     try {
-      await navigator.clipboard.writeText(text);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      }
       Swal.fire({
         title: "Copiado",
-        text: "Número de cuenta copiado al portapapeles.",
+        text: `Número "${text}" copiado al portapapeles.`,
         icon: "success",
-        timer: 1000,
+        timer: 1100,
         showConfirmButton: false,
       });
     } catch (err) {
       console.error("Error al copiar:", err);
       Swal.fire(
-        "No se pudo copiar",
-        "Ocurrió un problema. Copia el número manualmente.",
-        "error"
+        "Ups",
+        "No se pudo copiar, hazlo manualmente si es necesario.",
+        "warning"
       );
     }
   };
 
-  // ===== CARGAR ÓRDENES (LOGIN CLÁSICO) =====
+  // ===== CARGAR ÓRDENES =====
   const loadOrders = async (p, silent = false) => {
     try {
       if (!silent) setLoading(true);
 
-      // ruta del backend que ya funcionaba
-      const res = await axios.get(
-        `${API_BASE}/api/orders-admin?pin=${encodeURIComponent(p)}`
-      );
+      // Puedes usar /api/orders-admin o /rs-admin.
+      const res = await axios.get(`${API_BASE}/api/orders-admin`, {
+        params: { pin: p },
+      });
 
       setOrders(Array.isArray(res.data) ? res.data : []);
       setAuthed(true);
@@ -115,8 +101,8 @@ function AdminPage() {
       console.error("Error cargando órdenes:", err);
       if (!silent) {
         Swal.fire(
-          "Error",
-          "PIN inválido o servidor no disponible",
+          "No se pudo entrar al panel",
+          "Verifica el PIN o que el backend esté en línea.",
           "error"
         );
       }
@@ -127,11 +113,19 @@ function AdminPage() {
   };
 
   const handleLogin = async () => {
-    if (!pin.trim()) {
-      Swal.fire("PIN requerido", "Ingresa el PIN del operador", "warning");
+    const trimmed = pin.trim();
+
+    // Pequeña validación local para que no prueben basura:
+    if (!/^\d{4,6}$/.test(trimmed)) {
+      Swal.fire(
+        "PIN inválido",
+        "El PIN debe ser numérico de 4 a 6 dígitos.",
+        "warning"
+      );
       return;
     }
-    await loadOrders(pin.trim());
+
+    await loadOrders(trimmed);
   };
 
   const handleChangeEstado = async (id, estado) => {
@@ -160,6 +154,7 @@ function AdminPage() {
         estado,
         pin,
       });
+
       if (res.data.ok) {
         Swal.fire({
           title: "✅ Estado actualizado",
@@ -205,14 +200,12 @@ function AdminPage() {
   const formatDateOnly = (iso) => {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "Fecha inválida";
-    return d.toDateString() === "Invalid Date"
-      ? "Fecha inválida"
-      : d.toLocaleDateString("es-CO", {
-          year: "numeric",
-          month: "short",
-          day: "2-digit",
-          weekday: "short",
-        });
+    return d.toLocaleDateString("es-CO", {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      weekday: "short",
+    });
   };
 
   const isInDateFilter = (orden) => {
@@ -340,9 +333,7 @@ function AdminPage() {
       }
     });
 
-    const totalPendientes = orders.filter(
-      (o) => o.estado === "pendiente"
-    ).length;
+    const totalPendientes = orders.filter((o) => o.estado === "pendiente").length;
     const totalPagadas = orders.filter((o) => o.estado === "pagada").length;
 
     return {
@@ -354,7 +345,7 @@ function AdminPage() {
     };
   }, [orders]);
 
-  // ===== RENDER LOGIN =====
+  // ===== RENDER =====
   if (!authed) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center px-4">
@@ -376,10 +367,11 @@ function AdminPage() {
           </p>
           <input
             type="password"
-            className="w-full mb-4 rounded-xl bg-slate-900 border border-slate-600 px-4 py-3 text-slate-100 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="PIN"
+            className="w-full mb-4 rounded-xl bg-slate-900 border border-slate-600 px-4 py-3 text-slate-100 text-center tracking-[0.3em] font-mono text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="••••"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
+            maxLength={6}
           />
           <button
             onClick={handleLogin}
@@ -388,15 +380,14 @@ function AdminPage() {
             Entrar al panel
           </button>
           <p className="text-[11px] text-slate-500 text-center mt-4">
-            Cambia el PIN desde tu archivo <code>.env</code> en el backend (
-            <code>OPERATOR_PIN</code>).
+            Para mayor seguridad, cambia el PIN en el backend (.env →
+            <code> OPERATOR_PIN</code>).
           </p>
         </motion.div>
       </div>
     );
   }
 
-  // ===== RENDER PANEL =====
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-10">
       {/* HEADER */}
@@ -414,7 +405,9 @@ function AdminPage() {
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
               🔐 PIN:{" "}
-              <span className="font-mono text-green-400">{pin}</span>
+              <span className="font-mono text-green-400">
+                {"*".repeat(pin.length || 4)}
+              </span>
             </span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
               🔄 Auto-refresh:
@@ -592,7 +585,7 @@ function AdminPage() {
                           {list.map((o) => (
                             <div
                               key={o.id}
-                              className="px-3 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
+                              className="px-3 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
                             >
                               {/* INFO IZQUIERDA */}
                               <div className="flex-1">
@@ -604,7 +597,8 @@ function AdminPage() {
                                     {o.nombre}
                                   </span>
                                 </div>
-                                <p className="text-xs text-slate-400">
+
+                                <p className="text-xs text-slate-400 mb-2">
                                   {o.montoWLD} WLD →{" "}
                                   <span className="font-semibold text-indigo-300">
                                     {Number(o.montoCOP || 0).toLocaleString(
@@ -614,40 +608,43 @@ function AdminPage() {
                                   </span>
                                 </p>
 
-                                {/* BANCO + TITULAR DESTACADO */}
-                                <div className="mt-2 flex flex-wrap items-center gap-3">
-                                  <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-950 border border-slate-700 text-[11px] uppercase tracking-wide text-slate-200">
-                                    <span className="mr-1 text-sm">🏦</span>
-                                    {o.banco || "Sin banco"}
-                                  </span>
-                                  <span className="text-[11px] text-slate-400">
-                                    Titular:
-                                  </span>
-                                  <span className="text-xs font-semibold text-slate-100">
-                                    {o.titular || "—"}
-                                  </span>
-                                </div>
+                                {/* BLOQUE DESTACADO: BANCO + CUENTA */}
+                                <div className="inline-flex flex-wrap items-center gap-3 px-4 py-2 rounded-2xl bg-slate-950 border border-slate-700 shadow-inner">
+                                  <div className="flex flex-col mr-3">
+                                    <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                                      Banco
+                                    </span>
+                                    <span className="text-sm font-semibold text-slate-50">
+                                      {o.banco || "—"}
+                                    </span>
+                                    <span className="text-[11px] text-slate-400">
+                                      Titular:{" "}
+                                      <span className="font-medium text-slate-100">
+                                        {o.titular || "—"}
+                                      </span>
+                                    </span>
+                                  </div>
 
-                                {/* NÚMERO DE CUENTA GRANDE + COPIAR */}
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <span className="text-[11px] text-slate-400 uppercase tracking-wide">
-                                    Nº cuenta / Nequi / Bre-B
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    <span className="px-3 py-1 rounded-xl bg-slate-950 border border-amber-500/70 text-amber-300 font-mono text-sm md:text-base shadow-sm">
+                                  <div className="w-px h-10 bg-slate-700/80" />
+
+                                  <div className="flex flex-col">
+                                    <span className="text-[10px] uppercase tracking-wide text-slate-400">
+                                      Nº cuenta / Nequi / Bre-B
+                                    </span>
+                                    <span className="font-mono text-lg text-amber-300 tracking-wide">
                                       {o.numero || "—"}
                                     </span>
-                                    <button
-                                      onClick={() => handleCopy(o.numero)}
-                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-100"
-                                    >
-                                      <span>📋</span>
-                                      <span>Copiar</span>
-                                    </button>
                                   </div>
+
+                                  <button
+                                    onClick={() => o.numero && handleCopy(o.numero)}
+                                    className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[11px] px-3 py-1 rounded-lg flex items-center gap-1"
+                                  >
+                                    📋 Copiar
+                                  </button>
                                 </div>
 
-                                <p className="text-[11px] text-slate-500 mt-1">
+                                <p className="text-[11px] text-slate-500 mt-2">
                                   Creada: {formatDateTime(o.creada_en)}{" "}
                                   {o.actualizada_en &&
                                     o.actualizada_en !== o.creada_en && (
@@ -658,6 +655,7 @@ function AdminPage() {
                                       </>
                                     )}
                                 </p>
+
                                 <p className="text-[11px] text-slate-500">
                                   World ID:{" "}
                                   {o.verified ? (
@@ -724,7 +722,7 @@ function AdminPage() {
     </div>
   );
 
-  // ===== SIGUIENTES ESTADOS =====
+  // ===== LÓGICA DE SIGUIENTES ESTADOS =====
   function getNextStates(estado) {
     switch (estado) {
       case "pendiente":
