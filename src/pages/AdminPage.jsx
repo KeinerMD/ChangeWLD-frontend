@@ -1,4 +1,3 @@
-// src/pages/AdminPage.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { API_BASE } from "../apiConfig";
@@ -15,39 +14,6 @@ function AdminPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("7d");
   const [autoRefreshMs, setAutoRefreshMs] = useState(5000);
-
-  const handleCopyCuenta = async (numero) => {
-  if (!numero) return;
-
-  const value = String(numero);
-
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(value);
-    } else {
-      // Fallback para navegadores viejos
-      const textarea = document.createElement("textarea");
-      textarea.value = value;
-      textarea.style.position = "fixed";
-      textarea.style.left = "-9999px";
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-    }
-
-    Swal.fire({
-      title: "Copiado",
-      text: `Número ${value} copiado al portapapeles`,
-      icon: "success",
-      timer: 900,
-      showConfirmButton: false,
-    });
-  } catch (err) {
-    console.error("Error al copiar:", err);
-    Swal.fire("Error", "No se pudo copiar al portapapeles", "error");
-  }
-};
 
   // ===== META DE ESTADOS =====
   const STATUS_META = {
@@ -96,51 +62,71 @@ function AdminPage() {
     "rechazada",
   ];
 
-// ===== CARGAR ÓRDENES =====
-const loadOrders = async (p, silent = false) => {
-  try {
-    if (!silent) setLoading(true);
+  // ===== UTIL: copiar al portapapeles =====
+  const copyToClipboard = async (label, value) => {
+    try {
+      await navigator.clipboard.writeText(String(value));
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: `${label} copiado`,
+        showConfirmButton: false,
+        timer: 1200,
+      });
+    } catch (err) {
+      console.error("Error al copiar:", err);
+      Swal.fire("Error", "No se pudo copiar al portapapeles.", "error");
+    }
+  };
 
-    const res = await axios.post(`${API_BASE}/api/orders-admin`, {
-      pin: p,
-    });
+  // ===== CARGAR ÓRDENES (usa POST, no querystring) =====
+  const loadOrders = async (p, silent = false) => {
+    try {
+      if (!silent) setLoading(true);
 
-    setOrders(Array.isArray(res.data) ? res.data : []);
-    setAuthed(true);
-  } catch (err) {
-    console.error("Error cargando órdenes:", err);
+      const res = await axios.post(`${API_BASE}/rs-admin`, { pin: p });
 
-    if (!silent) {
-      const status = err?.response?.status;
-      if (status === 403) {
-        Swal.fire("PIN inválido", "Revisa el PIN del operador.", "error");
-      } else if (status === 404) {
+      if (res.data?.ok) {
+        const list = Array.isArray(res.data.orders) ? res.data.orders : [];
+        setOrders(list);
+        setAuthed(true);
+      } else {
+        throw new Error(res.data?.error || "Respuesta inválida");
+      }
+    } catch (err) {
+      console.error("Error cargando órdenes:", err);
+      if (!silent) {
         Swal.fire(
           "No se pudo entrar al panel",
-          "La ruta /api/orders-admin devolvió 404. Revisa que el backend tenga ese endpoint.",
-          "error"
-        );
-      } else {
-        Swal.fire(
-          "Error",
-          "PIN inválido o servidor no disponible",
+          "Verifica el PIN o que el backend esté en línea.",
           "error"
         );
       }
+      setAuthed(false);
+    } finally {
+      if (!silent) setLoading(false);
     }
-    setAuthed(false);
-  } finally {
-    if (!silent) setLoading(false);
-  }
-};
-
+  };
 
   const handleLogin = async () => {
-    if (!pin.trim()) {
+    const trimmed = pin.trim();
+
+    if (!trimmed) {
       Swal.fire("PIN requerido", "Ingresa el PIN del operador", "warning");
       return;
     }
-    await loadOrders(pin.trim());
+
+    if (!/^\d{4,6}$/.test(trimmed)) {
+      Swal.fire(
+        "Formato inválido",
+        "El PIN debe ser solo números (4 a 6 dígitos).",
+        "warning"
+      );
+      return;
+    }
+
+    await loadOrders(trimmed);
   };
 
   const handleChangeEstado = async (id, estado) => {
@@ -347,12 +333,8 @@ const loadOrders = async (p, silent = false) => {
       }
     });
 
-    const totalPendientes = orders.filter(
-      (o) => o.estado === "pendiente"
-    ).length;
-    const totalPagadas = orders.filter(
-      (o) => o.estado === "pagada"
-    ).length;
+    const totalPendientes = orders.filter((o) => o.estado === "pendiente").length;
+    const totalPagadas = orders.filter((o) => o.estado === "pagada").length;
 
     return {
       totalToday,
@@ -363,7 +345,7 @@ const loadOrders = async (p, silent = false) => {
     };
   }, [orders]);
 
-  // ===== RENDER =====
+  // ===== RENDER LOGIN =====
   if (!authed) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center px-4">
@@ -378,15 +360,13 @@ const loadOrders = async (p, silent = false) => {
           </h1>
           <p className="text-slate-400 text-center mb-6 text-sm">
             Ingresa el{" "}
-            <span className="font-semibold text-indigo-300">
-              PIN de operador
-            </span>{" "}
+            <span className="font-semibold text-indigo-300">PIN de operador</span>{" "}
             para ver y gestionar las órdenes.
           </p>
           <input
             type="password"
             className="w-full mb-4 rounded-xl bg-slate-900 border border-slate-600 px-4 py-3 text-slate-100 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="PIN"
+            placeholder="PIN (4-6 dígitos)"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
           />
@@ -405,6 +385,7 @@ const loadOrders = async (p, silent = false) => {
     );
   }
 
+  // ===== RENDER PANEL =====
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-10">
       {/* HEADER */}
@@ -421,7 +402,10 @@ const loadOrders = async (p, silent = false) => {
           </div>
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
-  🔐 Operador conectado
+              🔐 PIN:{" "}
+              <span className="font-mono text-green-400">
+                {"•".repeat(Math.max(4, pin.length))}
+              </span>
             </span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
               🔄 Auto-refresh:
@@ -599,7 +583,7 @@ const loadOrders = async (p, silent = false) => {
                           {list.map((o) => (
                             <div
                               key={o.id}
-                              className="px-3 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
+                              className="px-3 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
                             >
                               {/* INFO IZQUIERDA */}
                               <div className="flex-1">
@@ -611,61 +595,72 @@ const loadOrders = async (p, silent = false) => {
                                     {o.nombre}
                                   </span>
                                 </div>
-                                <p className="text-xs text-slate-400">
-                                  {o.montoWLD} WLD →{" "}
-                                  <span className="font-semibold text-indigo-300">
+
+                                {/* Monto grande */}
+                                <p className="text-sm text-slate-300 mb-1">
+                                  <span className="font-semibold text-indigo-200">
+                                    {o.montoWLD} WLD
+                                  </span>{" "}
+                                  →
+                                  <span className="font-bold text-indigo-300 ml-1">
                                     {Number(o.montoCOP || 0).toLocaleString(
                                       "es-CO"
                                     )}{" "}
                                     COP
                                   </span>
                                 </p>
-                                {/* Banco + titular */}
-<div className="flex flex-wrap items-center gap-2 mt-1">
-  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-100 border border-slate-700">
-    <span className="text-xs">🏦</span>
-    {o.banco || "Sin banco"}
-  </span>
 
-  <span className="text-[11px] text-slate-400">
-    Titular:{" "}
-    <span className="font-medium text-slate-100">
-      {o.titular || "—"}
-    </span>
-  </span>
-</div>
+                                {/* BLOQUE DESTACADO DE BANCO + NÚMERO */}
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                  <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700 rounded-xl px-3 py-2">
+                                    <span className="text-lg">
+                                      {o.banco === "Nequi"
+                                        ? "📱"
+                                        : o.banco === "Llave Bre-B"
+                                        ? "🔑"
+                                        : "🏦"}
+                                    </span>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs text-slate-300 uppercase tracking-wide">
+                                        Banco / Billetera
+                                      </span>
+                                      <span className="text-sm font-semibold text-slate-50">
+                                        {o.banco}
+                                      </span>
+                                    </div>
+                                  </div>
 
-{/* Número de cuenta + botón copiar */}
-<div className="flex flex-wrap items-center gap-2 mt-1">
-  <span className="text-[11px] text-slate-400">
-    Nº cuenta / Nequi / Bre-B:{" "}
-    <span className="ml-1 font-mono text-slate-100">
-      {o.numero || "—"}
-    </span>
-  </span>
+                                  <button
+                                    onClick={() =>
+                                      copyToClipboard(
+                                        "Número de cuenta",
+                                        o.numero
+                                      )
+                                    }
+                                    className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl px-3 py-2 text-xs md:text-sm font-semibold text-white transition-all"
+                                  >
+                                    <span className="text-xs uppercase tracking-wide opacity-80">
+                                      N° cuenta / Nequi / Bre-B
+                                    </span>
+                                    <span className="font-mono text-sm md:text-base bg-slate-900/30 px-2 py-1 rounded-lg">
+                                      {o.numero}
+                                    </span>
+                                    <span className="text-[11px] md:text-xs opacity-90">
+                                      Copiar
+                                    </span>
+                                  </button>
+                                </div>
 
-  {o.numero && (
-    <button
-      type="button"
-      onClick={() => handleCopyCuenta(o.numero)}
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-500/60 text-[10px] text-indigo-200 hover:bg-indigo-500/10 active:scale-95 transition"
-    >
-      📋 Copiar
-    </button>
-  )}
-</div>
-
-                                <p className="text-[11px] text-slate-500 mt-1">
-                                  Creada: {formatDateTime(o.creada_en)}{" "}
-                                  {o.actualizada_en &&
-                                    o.actualizada_en !== o.creada_en && (
-                                      <>
-                                        • Actualizada:{" "}
-                                        {formatDateTime(o.actualizada_en)}
-                                      </>
-                                    )}
+                                {/* Titular */}
+                                <p className="text-xs text-slate-400 mt-1">
+                                  Titular:{" "}
+                                  <span className="font-semibold text-slate-200">
+                                    {o.titular}
+                                  </span>
                                 </p>
-                                <p className="text-[11px] text-slate-500">
+
+                                {/* World ID */}
+                                <p className="text-[11px] text-slate-500 mt-1">
                                   World ID:{" "}
                                   {o.verified ? (
                                     <span className="text-emerald-400 font-semibold">
@@ -677,10 +672,22 @@ const loadOrders = async (p, silent = false) => {
                                     </span>
                                   )}
                                 </p>
+
+                                {/* Fechas */}
+                                <p className="text-[11px] text-slate-500 mt-1">
+                                  Creada: {formatDateTime(o.creada_en)}{" "}
+                                  {o.actualizada_en &&
+                                    o.actualizada_en !== o.creada_en && (
+                                      <>
+                                        {" • "}Actualizada:{" "}
+                                        {formatDateTime(o.actualizada_en)}
+                                      </>
+                                    )}
+                                </p>
                               </div>
 
                               {/* ESTADO + ACCIONES */}
-                              <div className="flex flex-col items-end gap-2 mt-1 md:mt-0 md:w-56">
+                              <div className="flex flex-col items-end gap-2 mt-1 md:mt-0 md:w-64">
                                 <span
                                   className={`px-3 py-1 border text-[11px] rounded-full text-slate-900 font-semibold ${
                                     meta?.colorBadge ||
@@ -691,29 +698,34 @@ const loadOrders = async (p, silent = false) => {
                                 </span>
 
                                 <div className="flex flex-wrap gap-2 justify-end">
-                                  {getNextStates(o.estado).map((estadoSig) => {
-                                    const m = STATUS_META[estadoSig];
-                                    const labelBtn =
-                                      m?.short || estadoSig.toUpperCase();
-                                    const base =
-                                      estadoSig === "pagada"
-                                        ? "bg-emerald-600 hover:bg-emerald-500"
-                                        : estadoSig === "rechazada"
-                                        ? "bg-red-600 hover:bg-red-500"
-                                        : "bg-sky-600 hover:bg-sky-500";
+                                  {getNextStates(o.estado).map(
+                                    (estadoSig) => {
+                                      const m = STATUS_META[estadoSig];
+                                      const labelBtn =
+                                        m?.short || estadoSig.toUpperCase();
+                                      const base =
+                                        estadoSig === "pagada"
+                                          ? "bg-emerald-600 hover:bg-emerald-500"
+                                          : estadoSig === "rechazada"
+                                          ? "bg-red-600 hover:bg-red-500"
+                                          : "bg-sky-600 hover:bg-sky-500";
 
-                                    return (
-                                      <button
-                                        key={estadoSig}
-                                        onClick={() =>
-                                          handleChangeEstado(o.id, estadoSig)
-                                        }
-                                        className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
-                                      >
-                                        {labelBtn}
-                                      </button>
-                                    );
-                                  })}
+                                      return (
+                                        <button
+                                          key={estadoSig}
+                                          onClick={() =>
+                                            handleChangeEstado(
+                                              o.id,
+                                              estadoSig
+                                            )
+                                          }
+                                          className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
+                                        >
+                                          {labelBtn}
+                                        </button>
+                                      );
+                                    }
+                                  )}
                                 </div>
                               </div>
                             </div>
