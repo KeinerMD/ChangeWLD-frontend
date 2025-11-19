@@ -10,11 +10,12 @@ import VerifyWorldID from "./components/VerifyWorldID";
 function App() {
   const [step, setStep] = useState(1);
   const [rate, setRate] = useState(null);
+  const [loadingRate, setLoadingRate] = useState(false);
   const [orderId, setOrderId] = useState(null);
   const [orderInfo, setOrderInfo] = useState(null);
   const [hasShownPaidAlert, setHasShownPaidAlert] = useState(false);
 
-  // 🔒 Estado de verificación World ID (incognito action)
+  // 🔒 Verificación World ID
   const [isVerified, setIsVerified] = useState(false);
   const [verificationNullifier, setVerificationNullifier] = useState(null);
 
@@ -26,22 +27,32 @@ function App() {
     numero: "",
   });
 
-  // ========= 1) CARGAR TASA DESDE BACKEND =========
+  // ========= 1) CARGAR TASA DESDE BACKEND (con auto-refresh) =========
   useEffect(() => {
-  const fetchRate = () => {
-    axios
-      .get(`${API_BASE}/api/rate`)
-      .then((res) => setRate(res.data))
-      .catch(() => {
-        /* puedes dejar el Swal o solo log para no molestar al usuario */
-      });
-  };
+    const fetchRate = () => {
+      setLoadingRate(true);
+      axios
+        .get(`${API_BASE}/api/rate`)
+        .then((res) => {
+          setRate(res.data);
+        })
+        .catch(() => {
+          Swal.fire(
+            "Error",
+            "No se pudo obtener la tasa actual. Intenta de nuevo más tarde.",
+            "error"
+          );
+        })
+        .finally(() => setLoadingRate(false));
+    };
 
-  fetchRate(); // primera vez
-  const interval = setInterval(fetchRate, 60_000); // cada 60s
+    // Primera vez
+    fetchRate();
+    // Actualizar cada 60 segundos
+    const interval = setInterval(fetchRate, 60_000);
 
-  return () => clearInterval(interval);
-}, []);
+    return () => clearInterval(interval);
+  }, []);
 
   // ========= 2) AUTO-REFRESH DE ORDEN CADA 5s =========
   useEffect(() => {
@@ -69,40 +80,33 @@ function App() {
     }
   }, [orderInfo, hasShownPaidAlert]);
 
-  // ========= CALLBACK CUANDO SE VERIFICA (MiniKit verify / modo pruebas) =========
-  /**
-   * onVerified puede enviarnos:
-   *  - un string con el nullifier_hash
-   *  - o un objeto tipo MiniAppVerifyActionSuccessPayload (ISuccessResult)
-   *    { status, proof, merkle_root, nullifier_hash, verification_level, version }
-   */
-  const handleWorldIdVerified = (payload) => {
+  // ========= CALLBACK CUANDO SE VERIFICA (real o modo pruebas) =========
+  const handleWorldIdVerified = (nullifierValue) => {
     setIsVerified(true);
-
-    let nullifier = null;
-
-    if (typeof payload === "string") {
-      nullifier = payload;
-    } else if (payload && typeof payload === "object") {
-      nullifier = payload.nullifier_hash || payload.nullifier;
-    }
-
-    // Fallback en modo pruebas
-    if (!nullifier) {
-      nullifier = "device-test-nullifier-changewld";
-    }
-
-    setVerificationNullifier(nullifier);
+    setVerificationNullifier(
+      nullifierValue || "device-test-nullifier-changewld"
+    );
   };
 
   // ========= ETAPA 1: CONFIRMAR MONTO =========
   const handleStep1 = () => {
-    if (!montoWLD || Number(montoWLD) <= 0) {
+    const monto = Number(montoWLD || 0);
+
+    if (!monto || monto <= 0) {
       Swal.fire("Monto inválido", "Ingresa un valor válido en WLD.", "warning");
       return;
     }
 
-    if (!isVerified) {
+    if (!rate || !rate.wld_cop_usuario) {
+      Swal.fire(
+        "Tasa no disponible",
+        "Aún no se ha cargado la tasa actual. Espera unos segundos e inténtalo de nuevo.",
+        "warning"
+      );
+      return;
+    }
+
+    if (!isVerified || !verificationNullifier) {
       Swal.fire(
         "Verificación requerida",
         "Debes verificar tu identidad con World ID antes de continuar.",
@@ -112,6 +116,7 @@ function App() {
     }
 
     setStep(2);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // ========= ETAPA 2: CONFIRMAR DATOS BANCARIOS Y CREAR ORDEN =========
@@ -121,10 +126,19 @@ function App() {
       return;
     }
 
-    if (!verificationNullifier) {
+    if (!verificationNullifier || !isVerified) {
       Swal.fire(
         "Error",
         "No se detectó la verificación World ID. Intenta nuevamente.",
+        "error"
+      );
+      return;
+    }
+
+    if (!rate || !rate.wld_cop_usuario) {
+      Swal.fire(
+        "Tasa no disponible",
+        "No se pudo leer la tasa actual. Intenta crear la orden de nuevo.",
         "error"
       );
       return;
@@ -148,7 +162,6 @@ function App() {
         numero: bankData.numero,
         montoWLD: Number(montoWLD),
         montoCOP: Number(montoCOP.toFixed(2)),
-        // Datos de verificación (para que el backend pueda auditar si quieres)
         verified: isVerified,
         nullifier: verificationNullifier,
       });
@@ -159,6 +172,7 @@ function App() {
         setOrderId(res.data.orden.id);
         setOrderInfo(res.data.orden);
         setStep(3);
+        window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
         Swal.fire(
           "Error",
@@ -192,6 +206,25 @@ function App() {
         return "⏳ Pendiente";
     }
   };
+
+  const tasaTexto =
+    rate?.wld_cop_usuario && !loadingRate
+      ? `${rate.wld_cop_usuario.toLocaleString("es-CO")} COP por 1 WLD`
+      : loadingRate
+      ? "Cargando tasa..."
+      : "Tasa no disponible";
+
+  const recibiriasTexto =
+    montoWLD && rate?.wld_cop_usuario
+      ? `${formatCOP(montoWLD * rate.wld_cop_usuario)} COP`
+      : "0 COP";
+
+  const continuarDisabled =
+    !montoWLD ||
+    Number(montoWLD) <= 0 ||
+    !rate?.wld_cop_usuario ||
+    !isVerified ||
+    !verificationNullifier;
 
   // ========= UI PRINCIPAL =========
   return (
@@ -269,23 +302,19 @@ function App() {
 
               <div className="bg-indigo-50 p-4 rounded-xl text-center">
                 <p className="text-sm text-gray-600">Tasa actual:</p>
-                <p className="text-lg font-bold text-indigo-700">
-                  {rate?.wld_cop_usuario
-                    ? `${rate.wld_cop_usuario.toLocaleString(
-                        "es-CO"
-                      )} COP por 1 WLD`
-                    : "Cargando..."}
-                </p>
+                <p className="text-lg font-bold text-indigo-700">{tasaTexto}</p>
 
                 <p className="text-xs text-gray-500 mt-2">Recibirías:</p>
                 <p className="text-2xl font-extrabold text-indigo-700">
-                  {montoWLD && rate?.wld_cop_usuario
-                    ? `${formatCOP(montoWLD * rate.wld_cop_usuario)} COP`
-                    : "0 COP"}
+                  {recibiriasTexto}
+                </p>
+
+                <p className="mt-2 text-[11px] text-gray-400">
+                  La tasa se actualiza automáticamente cada 60 segundos.
                 </p>
               </div>
 
-              {/* WORLD ID (MiniKit verify / modo pruebas) */}
+              {/* WORLD ID (device / minikit) */}
               <div className="mt-5">
                 <VerifyWorldID onVerified={handleWorldIdVerified} />
 
@@ -305,7 +334,12 @@ function App() {
 
               <button
                 onClick={handleStep1}
-                className="mt-4 w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold"
+                disabled={continuarDisabled}
+                className={`mt-4 w-full py-3 rounded-xl font-semibold ${
+                  continuarDisabled
+                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                    : "bg-indigo-600 text-white"
+                }`}
               >
                 Continuar
               </button>
@@ -408,6 +442,24 @@ function App() {
                 <p className="text-xl font-bold">
                   {currentStatusLabel(orderInfo?.estado)}
                 </p>
+
+                {orderInfo && (
+                  <div className="mt-4 text-xs text-gray-600 text-left">
+                    <p>
+                      <b>Monto:</b> {orderInfo.montoWLD} WLD →{" "}
+                      {formatCOP(orderInfo.montoCOP)} COP
+                    </p>
+                    <p>
+                      <b>Banco:</b> {orderInfo.banco}
+                    </p>
+                    <p>
+                      <b>Titular:</b> {orderInfo.titular}
+                    </p>
+                    <p>
+                      <b>Número:</b> {orderInfo.numero}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <button
@@ -420,6 +472,7 @@ function App() {
                   setIsVerified(false);
                   setVerificationNullifier(null);
                   setHasShownPaidAlert(false);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
               >
