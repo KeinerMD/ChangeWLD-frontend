@@ -5,9 +5,6 @@ import { API_BASE } from "../apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
 
-const MAX_ATTEMPTS = 3;          // intentos de PIN antes de bloqueo
-const LOCK_TIME_MS = 2 * 60_000; // 2 minutos bloqueado
-
 function AdminPage() {
   const [pin, setPin] = useState("");
   const [orders, setOrders] = useState([]);
@@ -18,10 +15,6 @@ function AdminPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("7d");
   const [autoRefreshMs, setAutoRefreshMs] = useState(5000);
-
-  // seguridad básica en el login
-  const [failedAttempts, setFailedAttempts] = useState(0);
-  const [lockUntil, setLockUntil] = useState(null);
 
   // ===== META DE ESTADOS =====
   const STATUS_META = {
@@ -106,63 +99,27 @@ function AdminPage() {
     }
   };
 
-  // ===== CONTROL DE INTENTOS DE PIN =====
-  const registerFailedPin = () => {
-    setFailedAttempts((prev) => {
-      const next = prev + 1;
-      if (next >= MAX_ATTEMPTS) {
-        setLockUntil(Date.now() + LOCK_TIME_MS);
-      }
-      return next;
-    });
-  };
-
-  // ===== CARGAR ÓRDENES =====
+  // ===== CARGAR ÓRDENES (LOGIN CLÁSICO) =====
   const loadOrders = async (p, silent = false) => {
     try {
       if (!silent) setLoading(true);
 
-      const url = `${API_BASE}/api/orders-admin?pin=${encodeURIComponent(p)}`;
-      const res = await axios.get(url);
+      // ruta del backend que ya funcionaba
+      const res = await axios.get(
+        `${API_BASE}/api/orders-admin?pin=${encodeURIComponent(p)}`
+      );
 
       setOrders(Array.isArray(res.data) ? res.data : []);
       setAuthed(true);
-      setFailedAttempts(0);
-      setLockUntil(null);
     } catch (err) {
       console.error("Error cargando órdenes:", err);
-
-      const status = err?.response?.status;
-
       if (!silent) {
-        if (status === 403) {
-          registerFailedPin();
-          const remaining = Math.max(
-            0,
-            MAX_ATTEMPTS - (failedAttempts + 1)
-          );
-          Swal.fire(
-            "PIN incorrecto",
-            remaining > 0
-              ? `Te quedan ${remaining} intento(s) antes de bloquear el panel.`
-              : "Has superado el número de intentos. El panel se bloqueará temporalmente.",
-            "error"
-          );
-        } else if (status === 404) {
-          Swal.fire(
-            "No se pudo entrar al panel",
-            "La ruta /api/orders-admin devolvió 404. Revisa que el backend tenga ese endpoint.",
-            "error"
-          );
-        } else {
-          Swal.fire(
-            "No se pudo entrar al panel",
-            "Verifica el PIN o que el backend esté en línea.",
-            "error"
-          );
-        }
+        Swal.fire(
+          "Error",
+          "PIN inválido o servidor no disponible",
+          "error"
+        );
       }
-
       setAuthed(false);
     } finally {
       if (!silent) setLoading(false);
@@ -170,24 +127,10 @@ function AdminPage() {
   };
 
   const handleLogin = async () => {
-    const now = Date.now();
-
-    if (lockUntil && now < lockUntil) {
-      const remainingSec = Math.ceil((lockUntil - now) / 1000);
-      const remainingMin = Math.ceil(remainingSec / 60);
-      Swal.fire(
-        "Panel bloqueado",
-        `Demasiados intentos fallidos. Espera aproximadamente ${remainingMin} minuto(s) antes de reintentar.`,
-        "warning"
-      );
-      return;
-    }
-
     if (!pin.trim()) {
       Swal.fire("PIN requerido", "Ingresa el PIN del operador", "warning");
       return;
     }
-
     await loadOrders(pin.trim());
   };
 
@@ -262,12 +205,14 @@ function AdminPage() {
   const formatDateOnly = (iso) => {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "Fecha inválida";
-    return d.toLocaleDateString("es-CO", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      weekday: "short",
-    });
+    return d.toDateString() === "Invalid Date"
+      ? "Fecha inválida"
+      : d.toLocaleDateString("es-CO", {
+          year: "numeric",
+          month: "short",
+          day: "2-digit",
+          weekday: "short",
+        });
   };
 
   const isInDateFilter = (orden) => {
@@ -409,15 +354,8 @@ function AdminPage() {
     };
   }, [orders]);
 
-  // ===== RENDER =====
+  // ===== RENDER LOGIN =====
   if (!authed) {
-    const now = Date.now();
-    const locked = lockUntil && now < lockUntil;
-    const remainingSec = locked
-      ? Math.ceil((lockUntil - now) / 1000)
-      : 0;
-    const remainingMin = locked ? Math.ceil(remainingSec / 60) : 0;
-
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center px-4">
         <motion.div
@@ -442,38 +380,23 @@ function AdminPage() {
             placeholder="PIN"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
-            disabled={locked}
           />
           <button
             onClick={handleLogin}
-            disabled={locked}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-all"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-all"
           >
             Entrar al panel
           </button>
-
-          <div className="mt-4 text-[11px] text-slate-500 text-center space-y-1">
-            <p>
-              Intentos fallidos:{" "}
-              <span className="font-semibold text-slate-200">
-                {failedAttempts}/{MAX_ATTEMPTS}
-              </span>
-            </p>
-            {locked && (
-              <p className="text-amber-300">
-                Panel bloqueado por seguridad. Espera ~{remainingMin} min.
-              </p>
-            )}
-            <p>
-              Cambia el PIN desde tu archivo <code>.env</code> en el backend (
-              <code>OPERATOR_PIN</code>).
-            </p>
-          </div>
+          <p className="text-[11px] text-slate-500 text-center mt-4">
+            Cambia el PIN desde tu archivo <code>.env</code> en el backend (
+            <code>OPERATOR_PIN</code>).
+          </p>
         </motion.div>
       </div>
     );
   }
 
+  // ===== RENDER PANEL =====
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-10">
       {/* HEADER */}
@@ -681,7 +604,6 @@ function AdminPage() {
                                     {o.nombre}
                                   </span>
                                 </div>
-
                                 <p className="text-xs text-slate-400">
                                   {o.montoWLD} WLD →{" "}
                                   <span className="font-semibold text-indigo-300">
@@ -736,7 +658,6 @@ function AdminPage() {
                                       </>
                                     )}
                                 </p>
-
                                 <p className="text-[11px] text-slate-500">
                                   World ID:{" "}
                                   {o.verified ? (
@@ -803,6 +724,7 @@ function AdminPage() {
     </div>
   );
 
+  // ===== SIGUIENTES ESTADOS =====
   function getNextStates(estado) {
     switch (estado) {
       case "pendiente":
