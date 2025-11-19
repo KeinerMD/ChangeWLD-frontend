@@ -4,6 +4,8 @@ import { API_BASE } from "../apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
 
+const ADMIN_ENDPOINT = "/rs-admin"; // ajusta a "/api/orders-admin" si tu backend usa ese path
+
 function AdminPage() {
   const [pin, setPin] = useState("");
   const [orders, setOrders] = useState([]);
@@ -13,9 +15,9 @@ function AdminPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("7d");
+  const [onlyPending, setOnlyPending] = useState(false);
   const [autoRefreshMs, setAutoRefreshMs] = useState(5000);
 
-  // ===== META DE ESTADOS =====
   const STATUS_META = {
     pendiente: {
       label: "Pendientes",
@@ -23,6 +25,7 @@ function AdminPage() {
       colorPill: "bg-yellow-500",
       colorBadge: "bg-yellow-100 text-yellow-800 border-yellow-300",
       icon: "🕒",
+      border: "border-l-4 border-yellow-400",
     },
     enviada: {
       label: "Enviadas",
@@ -30,13 +33,15 @@ function AdminPage() {
       colorPill: "bg-blue-500",
       colorBadge: "bg-blue-100 text-blue-800 border-blue-300",
       icon: "📤",
+      border: "border-l-4 border-blue-400",
     },
     recibida_wld: {
       label: "WLD Recibidos",
-      short: "Recibida WLD",
+      short: "WLD recibidos",
       colorPill: "bg-purple-500",
       colorBadge: "bg-purple-100 text-purple-800 border-purple-300",
-      icon: "🔍",
+      icon: "🟣",
+      border: "border-l-4 border-purple-400",
     },
     pagada: {
       label: "Pagadas",
@@ -44,6 +49,7 @@ function AdminPage() {
       colorPill: "bg-green-500",
       colorBadge: "bg-green-100 text-green-800 border-green-300",
       icon: "💸",
+      border: "border-l-4 border-green-400",
     },
     rechazada: {
       label: "Rechazadas",
@@ -51,6 +57,7 @@ function AdminPage() {
       colorPill: "bg-red-500",
       colorBadge: "bg-red-100 text-red-800 border-red-300",
       icon: "❌",
+      border: "border-l-4 border-red-400",
     },
   };
 
@@ -66,7 +73,7 @@ function AdminPage() {
   const loadOrders = async (p, silent = false) => {
     try {
       if (!silent) setLoading(true);
-      const res = await axios.get(`${API_BASE}/api/orders-admin?pin=${p}`);
+      const res = await axios.get(`${API_BASE}${ADMIN_ENDPOINT}?pin=${p}`);
       setOrders(Array.isArray(res.data) ? res.data : []);
       setAuthed(true);
     } catch (err) {
@@ -204,19 +211,40 @@ function AdminPage() {
     return true; // "all"
   };
 
+  const copyPaymentData = (o) => {
+    const text = `ORDEN #${o.id}
+Banco: ${o.banco}
+Titular: ${o.titular}
+Número: ${o.numero}
+Monto: ${o.montoWLD} WLD → ${Number(o.montoCOP || 0).toLocaleString("es-CO")} COP`;
+
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        Swal.fire({
+          toast: true,
+          icon: "success",
+          title: "Datos copiados",
+          position: "top-end",
+          showConfirmButton: false,
+          timer: 1300,
+        });
+      })
+      .catch(() => {});
+  };
+
   // ===== FILTRADO & AGRUPACIÓN =====
   const filteredOrders = useMemo(() => {
     let list = [...orders];
 
-    // Filtro por estado
-    if (statusFilter !== "all") {
+    if (onlyPending) {
+      list = list.filter((o) => o.estado === "pendiente");
+    } else if (statusFilter !== "all") {
       list = list.filter((o) => o.estado === statusFilter);
     }
 
-    // Filtro por fecha
     list = list.filter((o) => isInDateFilter(o));
 
-    // Filtro de búsqueda
     if (searchTerm.trim()) {
       const q = searchTerm.trim().toLowerCase();
       list = list.filter((o) => {
@@ -225,17 +253,18 @@ function AdminPage() {
         const banco = String(o.banco || "").toLowerCase();
         const titular = String(o.titular || "").toLowerCase();
         const numero = String(o.numero || "").toLowerCase();
+        const nullifier = String(o.nullifier || "").toLowerCase();
         return (
           id.includes(q) ||
           nombre.includes(q) ||
           banco.includes(q) ||
           titular.includes(q) ||
-          numero.includes(q)
+          numero.includes(q) ||
+          nullifier.includes(q)
         );
       });
     }
 
-    // Ordenar por fecha descendente (más nuevas primero)
     list.sort((a, b) => {
       const da = new Date(a.creada_en || a.actualizada_en || 0).getTime();
       const db = new Date(b.creada_en || b.actualizada_en || 0).getTime();
@@ -243,9 +272,8 @@ function AdminPage() {
     });
 
     return list;
-  }, [orders, statusFilter, dateFilter, searchTerm]);
+  }, [orders, statusFilter, dateFilter, searchTerm, onlyPending]);
 
-  // Agrupar por día y luego por estado
   const groupedByDay = useMemo(() => {
     const map = {};
 
@@ -254,29 +282,24 @@ function AdminPage() {
         ? new Date(o.creada_en).toDateString()
         : "sin-fecha";
       if (!map[key]) {
-        map[key] = { dateKey: key, display: formatDateOnly(o.creada_en), orders: [] };
+        map[key] = {
+          dateKey: key,
+          display: formatDateOnly(o.creada_en),
+          orders: [],
+        };
       }
       map[key].orders.push(o);
     });
 
     const groups = Object.values(map);
 
-    // Ordenar días (más recientes primero)
     groups.sort((a, b) => {
       const da = new Date(a.orders[0]?.creada_en || 0).getTime();
       const db = new Date(b.orders[0]?.creada_en || 0).getTime();
       return db - da;
     });
 
-    // Dentro de cada día agrupar por estado
-    return groups.map((g) => {
-      const byStatus = {};
-      g.orders.forEach((o) => {
-        if (!byStatus[o.estado]) byStatus[o.estado] = [];
-        byStatus[o.estado].push(o);
-      });
-      return { ...g, byStatus };
-    });
+    return groups;
   }, [filteredOrders]);
 
   // ===== ESTADÍSTICAS =====
@@ -295,8 +318,12 @@ function AdminPage() {
       }
     });
 
-    const totalPendientes = orders.filter((o) => o.estado === "pendiente").length;
+    const totalPendientes = orders.filter(
+      (o) => o.estado === "pendiente"
+    ).length;
     const totalPagadas = orders.filter((o) => o.estado === "pagada").length;
+
+    const totalVerificadas = orders.filter((o) => o.verified).length;
 
     return {
       totalToday,
@@ -304,10 +331,11 @@ function AdminPage() {
       totalCopToday,
       totalPendientes,
       totalPagadas,
+      totalVerificadas,
     };
   }, [orders]);
 
-  // ===== RENDER =====
+  // ===== LOGIN VIEW =====
   if (!authed) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center px-4">
@@ -321,8 +349,11 @@ function AdminPage() {
             ⚙️ Panel Operador — ChangeWLD
           </h1>
           <p className="text-slate-400 text-center mb-6 text-sm">
-            Ingresa el <span className="font-semibold text-indigo-300">PIN de operador</span> para ver y gestionar las
-            órdenes.
+            Ingresa el{" "}
+            <span className="font-semibold text-indigo-300">
+              PIN de operador
+            </span>{" "}
+            para ver y gestionar las órdenes.
           </p>
           <input
             type="password"
@@ -338,13 +369,15 @@ function AdminPage() {
             Entrar al panel
           </button>
           <p className="text-[11px] text-slate-500 text-center mt-4">
-            Cambia el PIN desde tu archivo <code>.env</code> en el backend (<code>OPERATOR_PIN</code>).
+            Cambia el PIN desde tu archivo <code>.env</code> en el backend (
+            <code>OPERATOR_PIN</code>).
           </p>
         </motion.div>
       </div>
     );
   }
 
+  // ===== MAIN VIEW =====
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-10">
       {/* HEADER */}
@@ -352,15 +385,17 @@ function AdminPage() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
-              <span className="text-indigo-400 text-2xl">◆</span> ChangeWLD — Panel Operador PRO
+              <span className="text-indigo-400 text-2xl">◆</span> ChangeWLD —
+              Panel Operador
             </h1>
             <p className="text-xs md:text-sm text-slate-400">
-              Control en tiempo real de órdenes de cambio WLD → COP.
+              Control en tiempo real de órdenes WLD → COP con World ID.
             </p>
           </div>
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
-              🔐 PIN: <span className="font-mono text-green-400">{pin}</span>
+              🔐 PIN:{" "}
+              <span className="font-mono text-green-400">{pin}</span>
             </span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
               🔄 Auto-refresh:
@@ -417,6 +452,12 @@ function AdminPage() {
                 {stats.totalPagadas}
               </span>
             </p>
+            <p className="text-sm text-slate-300">
+              🌐 Verificadas (World ID):{" "}
+              <span className="font-semibold text-sky-300">
+                {stats.totalVerificadas}
+              </span>
+            </p>
           </div>
         </section>
 
@@ -430,17 +471,28 @@ function AdminPage() {
               <input
                 type="text"
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Buscar por ID, nombre, banco o número de cuenta..."
+                placeholder="Buscar por ID, banco, titular, número o nullifier..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs md:text-[11px]">
+          <div className="flex flex-wrap gap-2 text-xs md:text-[11px] items-center">
+            <label className="flex items-center gap-1 text-slate-300 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 cursor-pointer">
+              <input
+                type="checkbox"
+                className="accent-indigo-500"
+                checked={onlyPending}
+                onChange={(e) => setOnlyPending(e.target.checked)}
+              />
+              Solo pendientes
+            </label>
+
             <select
               className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
+              disabled={onlyPending}
             >
               <option value="all">Estado: Todos</option>
               <option value="pendiente">Pendiente</option>
@@ -505,123 +557,114 @@ function AdminPage() {
                   </span>
                 </div>
 
-                {/* AGRUPADO POR ESTADO */}
-                <div className="p-4 space-y-4">
-                  {STATUS_ORDER.map((estadoKey) => {
-                    const list = group.byStatus[estadoKey] || [];
-                    if (!list.length) return null;
+                {/* ÓRDENES */}
+                <div className="divide-y divide-slate-800">
+                  {group.orders.map((o) => {
+                    const meta = STATUS_META[o.estado] || {};
+                    const borderClass = meta.border || "border-l-4 border-slate-700";
+                    const verifiedBadge = o.verified ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/40">
+                        🌐 World ID OK
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/10 text-red-300 border border-red-500/40">
+                        ⚠ Sin verificación
+                      </span>
+                    );
 
-                    const meta = STATUS_META[estadoKey];
+                    const nullifierShort = o.nullifier
+                      ? `${String(o.nullifier).slice(0, 8)}...${String(
+                          o.nullifier
+                        ).slice(-4)}`
+                      : "N/A";
 
                     return (
                       <div
-                        key={estadoKey}
-                        className={`rounded-xl border ${
-                          estadoKey === "pendiente"
-                            ? "border-yellow-500/70 bg-yellow-500/5"
-                            : "border-slate-800 bg-slate-900/60"
-                        }`}
+                        key={o.id}
+                        className={`px-3 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between bg-slate-900/80 ${borderClass}`}
                       >
-                        <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span>{meta?.icon || "●"}</span>
-                            <span className="text-xs font-semibold text-slate-100">
-                              {meta?.label || estadoKey.toUpperCase()}{" "}
-                              <span className="text-slate-500">
-                                ({list.length})
-                              </span>
+                        {/* INFO IZQUIERDA */}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs text-slate-500">
+                              #{o.id}
                             </span>
+                            <span className="text-sm font-semibold text-slate-100">
+                              {o.nombre || o.titular || "Sin nombre"}
+                            </span>
+                            {verifiedBadge}
                           </div>
+                          <p className="text-xs text-slate-400">
+                            {o.montoWLD} WLD →{" "}
+                            <span className="font-semibold text-indigo-300">
+                              {Number(o.montoCOP || 0).toLocaleString("es-CO")}{" "}
+                              COP
+                            </span>
+                          </p>
+                          <p className="text-xs text-slate-400">
+                            {o.banco} • {o.titular} • {o.numero}
+                          </p>
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            Creada: {formatDateTime(o.creada_en)}{" "}
+                            {o.actualizada_en &&
+                              o.actualizada_en !== o.creada_en && (
+                                <>
+                                  • Actualizada:{" "}
+                                  {formatDateTime(o.actualizada_en)}
+                                </>
+                              )}
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            Nullifier:{" "}
+                            <span className="font-mono text-slate-300">
+                              {nullifierShort}
+                            </span>
+                          </p>
                         </div>
 
-                        <div className="divide-y divide-slate-800">
-                          {list.map((o) => (
-                            <div
-                              key={o.id}
-                              className="px-3 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between"
+                        {/* ESTADO + ACCIONES */}
+                        <div className="flex flex-col items-end gap-2 mt-1 md:mt-0 md:w-64">
+                          <span
+                            className={`px-3 py-1 border text-[11px] rounded-full text-slate-900 font-semibold ${
+                              meta.colorBadge ||
+                              "bg-slate-200 text-slate-900 border-slate-300"
+                            }`}
+                          >
+                            {meta.short || o.estado.toUpperCase()}
+                          </span>
+
+                          <div className="flex flex-wrap gap-2 justify-end">
+                            <button
+                              onClick={() => copyPaymentData(o)}
+                              className="bg-slate-800 hover:bg-slate-700 text-[11px] px-3 py-1 rounded-lg border border-slate-600 text-slate-100"
                             >
-                              {/* INFO IZQUIERDA */}
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-xs text-slate-500">
-                                    #{o.id}
-                                  </span>
-                                  <span className="text-sm font-semibold text-slate-100">
-                                    {o.nombre}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-slate-400">
-                                  {o.montoWLD} WLD →{" "}
-                                  <span className="font-semibold text-indigo-300">
-                                    {Number(o.montoCOP || 0).toLocaleString(
-                                      "es-CO"
-                                    )}{" "}
-                                    COP
-                                  </span>
-                                </p>
-                                <p className="text-xs text-slate-400">
-                                  {o.banco} • {o.titular} • {o.numero}
-                                </p>
-                                <p className="text-[11px] text-slate-500 mt-1">
-                                  Creada: {formatDateTime(o.creada_en)}{" "}
-                                  {o.actualizada_en &&
-                                    o.actualizada_en !== o.creada_en && (
-                                      <>
-                                        • Actualizada:{" "}
-                                        {formatDateTime(o.actualizada_en)}
-                                      </>
-                                    )}
-                                </p>
-                                <p className="text-[11px] text-slate-500">
-  World ID:{" "}
-  {o.verified ? (
-    <span className="text-emerald-400 font-semibold">✔ Verificado</span>
-  ) : (
-    <span className="text-red-400 font-semibold">✖ Sin verificación</span>
-  )}
-</p>
+                              📋 Copiar datos
+                            </button>
 
-                              </div>
+                            {getNextStates(o.estado).map((estadoSig) => {
+                              const m = STATUS_META[estadoSig];
+                              const labelBtn =
+                                m?.short || estadoSig.toUpperCase();
+                              const base =
+                                estadoSig === "pagada"
+                                  ? "bg-emerald-600 hover:bg-emerald-500"
+                                  : estadoSig === "rechazada"
+                                  ? "bg-red-600 hover:bg-red-500"
+                                  : "bg-sky-600 hover:bg-sky-500";
 
-                              {/* ESTADO + ACCIONES */}
-                              <div className="flex flex-col items-end gap-2 mt-1 md:mt-0 md:w-56">
-                                <span
-                                  className={`px-3 py-1 border text-[11px] rounded-full text-slate-900 font-semibold ${
-                                    meta?.colorBadge ||
-                                    "bg-slate-200 text-slate-900 border-slate-300"
-                                  }`}
+                              return (
+                                <button
+                                  key={estadoSig}
+                                  onClick={() =>
+                                    handleChangeEstado(o.id, estadoSig)
+                                  }
+                                  className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
                                 >
-                                  {meta?.short || o.estado.toUpperCase()}
-                                </span>
-
-                                {/* Botones de siguiente estado */}
-                                <div className="flex flex-wrap gap-2 justify-end">
-                                  {getNextStates(o.estado).map((estadoSig) => {
-                                    const m = STATUS_META[estadoSig];
-                                    const labelBtn = m?.short || estadoSig.toUpperCase();
-                                    const base =
-                                      estadoSig === "pagada"
-                                        ? "bg-emerald-600 hover:bg-emerald-500"
-                                        : estadoSig === "rechazada"
-                                        ? "bg-red-600 hover:bg-red-500"
-                                        : "bg-sky-600 hover:bg-sky-500";
-
-                                    return (
-                                      <button
-                                        key={estadoSig}
-                                        onClick={() =>
-                                          handleChangeEstado(o.id, estadoSig)
-                                        }
-                                        className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
-                                      >
-                                        {labelBtn}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            </div>
-                          ))}
+                                  {labelBtn}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     );
