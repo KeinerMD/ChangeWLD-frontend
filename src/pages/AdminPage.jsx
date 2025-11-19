@@ -1,3 +1,4 @@
+// frontend/src/pages/AdminPage.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { API_BASE } from "../apiConfig";
@@ -66,14 +67,38 @@ function AdminPage() {
   const loadOrders = async (p, silent = false) => {
     try {
       if (!silent) setLoading(true);
-      const res = await axios.get(`${API_BASE}/api/orders-admin?pin=${p}`);
+
+      // 👉 ruta real del backend
+      const url = `${API_BASE}/rs-admin?pin=${encodeURIComponent(p)}`;
+      const res = await axios.get(url);
+
       setOrders(Array.isArray(res.data) ? res.data : []);
       setAuthed(true);
     } catch (err) {
-      console.error(err);
+      console.error("Error cargando órdenes:", err);
+
       if (!silent) {
-        Swal.fire("Error", "PIN inválido o servidor no disponible", "error");
+        let msg = "Error al conectar con el panel.";
+
+        if (err.response) {
+          if (err.response.status === 403) {
+            msg = "PIN inválido. Verifica el PIN del operador.";
+          } else if (err.response.status === 404) {
+            msg =
+              "La ruta /rs-admin devolvió 404. Revisa que el backend tenga ese endpoint.";
+          } else {
+            msg = `Error del servidor (${err.response.status}).`;
+          }
+        } else if (err.request) {
+          msg =
+            "No se pudo contactar al backend (Render). Verifica que el servicio esté vivo.";
+        } else {
+          msg = err.message || msg;
+        }
+
+        Swal.fire("No se pudo entrar al panel", msg, "error");
       }
+
       setAuthed(false);
     } finally {
       if (!silent) setLoading(false);
@@ -254,7 +279,11 @@ function AdminPage() {
         ? new Date(o.creada_en).toDateString()
         : "sin-fecha";
       if (!map[key]) {
-        map[key] = { dateKey: key, display: formatDateOnly(o.creada_en), orders: [] };
+        map[key] = {
+          dateKey: key,
+          display: formatDateOnly(o.creada_en),
+          orders: [],
+        };
       }
       map[key].orders.push(o);
     });
@@ -295,8 +324,12 @@ function AdminPage() {
       }
     });
 
-    const totalPendientes = orders.filter((o) => o.estado === "pendiente").length;
-    const totalPagadas = orders.filter((o) => o.estado === "pagada").length;
+    const totalPendientes = orders.filter(
+      (o) => o.estado === "pendiente"
+    ).length;
+    const totalPagadas = orders.filter(
+      (o) => o.estado === "pagada"
+    ).length;
 
     return {
       totalToday,
@@ -321,8 +354,11 @@ function AdminPage() {
             ⚙️ Panel Operador — ChangeWLD
           </h1>
           <p className="text-slate-400 text-center mb-6 text-sm">
-            Ingresa el <span className="font-semibold text-indigo-300">PIN de operador</span> para ver y gestionar las
-            órdenes.
+            Ingresa el{" "}
+            <span className="font-semibold text-indigo-300">
+              PIN de operador
+            </span>{" "}
+            para ver y gestionar las órdenes.
           </p>
           <input
             type="password"
@@ -338,7 +374,8 @@ function AdminPage() {
             Entrar al panel
           </button>
           <p className="text-[11px] text-slate-500 text-center mt-4">
-            Cambia el PIN desde tu archivo <code>.env</code> en el backend (<code>OPERATOR_PIN</code>).
+            Cambia el PIN desde tu archivo <code>.env</code> en el backend (
+            <code>OPERATOR_PIN</code>).
           </p>
         </motion.div>
       </div>
@@ -352,7 +389,8 @@ function AdminPage() {
         <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
-              <span className="text-indigo-400 text-2xl">◆</span> ChangeWLD — Panel Operador PRO
+              <span className="text-indigo-400 text-2xl">◆</span> ChangeWLD —
+              Panel Operador PRO
             </h1>
             <p className="text-xs md:text-sm text-slate-400">
               Control en tiempo real de órdenes de cambio WLD → COP.
@@ -360,7 +398,8 @@ function AdminPage() {
           </div>
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
-              🔐 PIN: <span className="font-mono text-green-400">{pin}</span>
+              🔐 PIN:{" "}
+              <span className="font-mono text-green-400">{pin}</span>
             </span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
               🔄 Auto-refresh:
@@ -386,21 +425,21 @@ function AdminPage() {
             <p className="text-xs text-slate-400 mb-1">Órdenes de hoy</p>
             <p className="text-2xl font-bold text-white">
               {stats.totalToday}
-              <span className="text-xs text-slate-500 ml-1">orden(es)</span>
+              <span className="text-xs text-slate-500 ml-1"> orden(es)</span>
             </p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
             <p className="text-xs text-slate-400 mb-1">WLD procesados hoy</p>
             <p className="text-2xl font-bold text-indigo-300">
               {stats.totalWldToday.toFixed(2)}
-              <span className="text-xs text-slate-500 ml-1">WLD</span>
+              <span className="text-xs text-slate-500 ml-1"> WLD</span>
             </p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
             <p className="text-xs text-slate-400 mb-1">COP enviados hoy</p>
             <p className="text-2xl font-bold text-emerald-300">
               {stats.totalCopToday.toLocaleString("es-CO")}
-              <span className="text-xs text-slate-500 ml-1">COP</span>
+              <span className="text-xs text-slate-500 ml-1"> COP</span>
             </p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 flex flex-col justify-between">
@@ -572,6 +611,18 @@ function AdminPage() {
                                       </>
                                     )}
                                 </p>
+                                <p className="text-[11px] text-slate-500">
+                                  World ID:{" "}
+                                  {o.verified ? (
+                                    <span className="text-emerald-400 font-semibold">
+                                      ✔ Verificado
+                                    </span>
+                                  ) : (
+                                    <span className="text-red-400 font-semibold">
+                                      ✖ Sin verificación
+                                    </span>
+                                  )}
+                                </p>
                               </div>
 
                               {/* ESTADO + ACCIONES */}
@@ -587,28 +638,35 @@ function AdminPage() {
 
                                 {/* Botones de siguiente estado */}
                                 <div className="flex flex-wrap gap-2 justify-end">
-                                  {getNextStates(o.estado).map((estadoSig) => {
-                                    const m = STATUS_META[estadoSig];
-                                    const labelBtn = m?.short || estadoSig.toUpperCase();
-                                    const base =
-                                      estadoSig === "pagada"
-                                        ? "bg-emerald-600 hover:bg-emerald-500"
-                                        : estadoSig === "rechazada"
-                                        ? "bg-red-600 hover:bg-red-500"
-                                        : "bg-sky-600 hover:bg-sky-500";
+                                  {getNextStates(o.estado).map(
+                                    (estadoSig) => {
+                                      const m = STATUS_META[estadoSig];
+                                      const labelBtn =
+                                        m?.short ||
+                                        estadoSig.toUpperCase();
+                                      const base =
+                                        estadoSig === "pagada"
+                                          ? "bg-emerald-600 hover:bg-emerald-500"
+                                          : estadoSig === "rechazada"
+                                          ? "bg-red-600 hover:bg-red-500"
+                                          : "bg-sky-600 hover:bg-sky-500";
 
-                                    return (
-                                      <button
-                                        key={estadoSig}
-                                        onClick={() =>
-                                          handleChangeEstado(o.id, estadoSig)
-                                        }
-                                        className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
-                                      >
-                                        {labelBtn}
-                                      </button>
-                                    );
-                                  })}
+                                      return (
+                                        <button
+                                          key={estadoSig}
+                                          onClick={() =>
+                                            handleChangeEstado(
+                                              o.id,
+                                              estadoSig
+                                            )
+                                          }
+                                          className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
+                                        >
+                                          {labelBtn}
+                                        </button>
+                                      );
+                                    }
+                                  )}
                                 </div>
                               </div>
                             </div>
