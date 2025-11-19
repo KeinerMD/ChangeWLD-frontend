@@ -1,4 +1,4 @@
-// frontend/src/pages/AdminPage.jsx
+// src/pages/AdminPage.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { API_BASE } from "../apiConfig";
@@ -68,8 +68,7 @@ function AdminPage() {
     try {
       if (!silent) setLoading(true);
 
-      // 👉 ruta real del backend
-      const url = `${API_BASE}/rs-admin?pin=${encodeURIComponent(p)}`;
+      const url = `${API_BASE}/api/orders-admin?pin=${encodeURIComponent(p)}`;
       const res = await axios.get(url);
 
       setOrders(Array.isArray(res.data) ? res.data : []);
@@ -78,27 +77,23 @@ function AdminPage() {
       console.error("Error cargando órdenes:", err);
 
       if (!silent) {
-        let msg = "Error al conectar con el panel.";
-
-        if (err.response) {
-          if (err.response.status === 403) {
-            msg = "PIN inválido. Verifica el PIN del operador.";
-          } else if (err.response.status === 404) {
-            msg =
-              "La ruta /rs-admin devolvió 404. Revisa que el backend tenga ese endpoint.";
-          } else {
-            msg = `Error del servidor (${err.response.status}).`;
-          }
-        } else if (err.request) {
-          msg =
-            "No se pudo contactar al backend (Render). Verifica que el servicio esté vivo.";
+        const status = err?.response?.status;
+        if (status === 403) {
+          Swal.fire("PIN inválido", "Revisa el PIN del operador.", "error");
+        } else if (status === 404) {
+          Swal.fire(
+            "No se pudo entrar al panel",
+            "La ruta /api/orders-admin devolvió 404. Revisa que el backend tenga ese endpoint.",
+            "error"
+          );
         } else {
-          msg = err.message || msg;
+          Swal.fire(
+            "Error",
+            "PIN inválido o servidor no disponible",
+            "error"
+          );
         }
-
-        Swal.fire("No se pudo entrar al panel", msg, "error");
       }
-
       setAuthed(false);
     } finally {
       if (!silent) setLoading(false);
@@ -233,15 +228,12 @@ function AdminPage() {
   const filteredOrders = useMemo(() => {
     let list = [...orders];
 
-    // Filtro por estado
     if (statusFilter !== "all") {
       list = list.filter((o) => o.estado === statusFilter);
     }
 
-    // Filtro por fecha
     list = list.filter((o) => isInDateFilter(o));
 
-    // Filtro de búsqueda
     if (searchTerm.trim()) {
       const q = searchTerm.trim().toLowerCase();
       list = list.filter((o) => {
@@ -260,7 +252,6 @@ function AdminPage() {
       });
     }
 
-    // Ordenar por fecha descendente (más nuevas primero)
     list.sort((a, b) => {
       const da = new Date(a.creada_en || a.actualizada_en || 0).getTime();
       const db = new Date(b.creada_en || b.actualizada_en || 0).getTime();
@@ -270,7 +261,6 @@ function AdminPage() {
     return list;
   }, [orders, statusFilter, dateFilter, searchTerm]);
 
-  // Agrupar por día y luego por estado
   const groupedByDay = useMemo(() => {
     const map = {};
 
@@ -290,14 +280,12 @@ function AdminPage() {
 
     const groups = Object.values(map);
 
-    // Ordenar días (más recientes primero)
     groups.sort((a, b) => {
       const da = new Date(a.orders[0]?.creada_en || 0).getTime();
       const db = new Date(b.orders[0]?.creada_en || 0).getTime();
       return db - da;
     });
 
-    // Dentro de cada día agrupar por estado
     return groups.map((g) => {
       const byStatus = {};
       g.orders.forEach((o) => {
@@ -425,21 +413,21 @@ function AdminPage() {
             <p className="text-xs text-slate-400 mb-1">Órdenes de hoy</p>
             <p className="text-2xl font-bold text-white">
               {stats.totalToday}
-              <span className="text-xs text-slate-500 ml-1"> orden(es)</span>
+              <span className="text-xs text-slate-500 ml-1">orden(es)</span>
             </p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
             <p className="text-xs text-slate-400 mb-1">WLD procesados hoy</p>
             <p className="text-2xl font-bold text-indigo-300">
               {stats.totalWldToday.toFixed(2)}
-              <span className="text-xs text-slate-500 ml-1"> WLD</span>
+              <span className="text-xs text-slate-500 ml-1">WLD</span>
             </p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
             <p className="text-xs text-slate-400 mb-1">COP enviados hoy</p>
             <p className="text-2xl font-bold text-emerald-300">
               {stats.totalCopToday.toLocaleString("es-CO")}
-              <span className="text-xs text-slate-500 ml-1"> COP</span>
+              <span className="text-xs text-slate-500 ml-1">COP</span>
             </p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 flex flex-col justify-between">
@@ -636,37 +624,30 @@ function AdminPage() {
                                   {meta?.short || o.estado.toUpperCase()}
                                 </span>
 
-                                {/* Botones de siguiente estado */}
                                 <div className="flex flex-wrap gap-2 justify-end">
-                                  {getNextStates(o.estado).map(
-                                    (estadoSig) => {
-                                      const m = STATUS_META[estadoSig];
-                                      const labelBtn =
-                                        m?.short ||
-                                        estadoSig.toUpperCase();
-                                      const base =
-                                        estadoSig === "pagada"
-                                          ? "bg-emerald-600 hover:bg-emerald-500"
-                                          : estadoSig === "rechazada"
-                                          ? "bg-red-600 hover:bg-red-500"
-                                          : "bg-sky-600 hover:bg-sky-500";
+                                  {getNextStates(o.estado).map((estadoSig) => {
+                                    const m = STATUS_META[estadoSig];
+                                    const labelBtn =
+                                      m?.short || estadoSig.toUpperCase();
+                                    const base =
+                                      estadoSig === "pagada"
+                                        ? "bg-emerald-600 hover:bg-emerald-500"
+                                        : estadoSig === "rechazada"
+                                        ? "bg-red-600 hover:bg-red-500"
+                                        : "bg-sky-600 hover:bg-sky-500";
 
-                                      return (
-                                        <button
-                                          key={estadoSig}
-                                          onClick={() =>
-                                            handleChangeEstado(
-                                              o.id,
-                                              estadoSig
-                                            )
-                                          }
-                                          className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
-                                        >
-                                          {labelBtn}
-                                        </button>
-                                      );
-                                    }
-                                  )}
+                                    return (
+                                      <button
+                                        key={estadoSig}
+                                        onClick={() =>
+                                          handleChangeEstado(o.id, estadoSig)
+                                        }
+                                        className={`${base} text-white text-[11px] font-semibold px-3 py-1 rounded-lg transition-all`}
+                                      >
+                                        {labelBtn}
+                                      </button>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             </div>
