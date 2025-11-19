@@ -16,6 +16,39 @@ function AdminPage() {
   const [dateFilter, setDateFilter] = useState("7d");
   const [autoRefreshMs, setAutoRefreshMs] = useState(5000);
 
+  const handleCopyCuenta = async (numero) => {
+  if (!numero) return;
+
+  const value = String(numero);
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(value);
+    } else {
+      // Fallback para navegadores viejos
+      const textarea = document.createElement("textarea");
+      textarea.value = value;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    }
+
+    Swal.fire({
+      title: "Copiado",
+      text: `Número ${value} copiado al portapapeles`,
+      icon: "success",
+      timer: 900,
+      showConfirmButton: false,
+    });
+  } catch (err) {
+    console.error("Error al copiar:", err);
+    Swal.fire("Error", "No se pudo copiar al portapapeles", "error");
+  }
+};
+
   // ===== META DE ESTADOS =====
   const STATUS_META = {
     pendiente: {
@@ -63,42 +96,44 @@ function AdminPage() {
     "rechazada",
   ];
 
-  // ===== CARGAR ÓRDENES =====
-  const loadOrders = async (p, silent = false) => {
-    try {
-      if (!silent) setLoading(true);
+// ===== CARGAR ÓRDENES =====
+const loadOrders = async (p, silent = false) => {
+  try {
+    if (!silent) setLoading(true);
 
-      const url = `${API_BASE}/api/orders-admin?pin=${encodeURIComponent(p)}`;
-      const res = await axios.get(url);
+    const res = await axios.post(`${API_BASE}/api/orders-admin`, {
+      pin: p,
+    });
 
-      setOrders(Array.isArray(res.data) ? res.data : []);
-      setAuthed(true);
-    } catch (err) {
-      console.error("Error cargando órdenes:", err);
+    setOrders(Array.isArray(res.data) ? res.data : []);
+    setAuthed(true);
+  } catch (err) {
+    console.error("Error cargando órdenes:", err);
 
-      if (!silent) {
-        const status = err?.response?.status;
-        if (status === 403) {
-          Swal.fire("PIN inválido", "Revisa el PIN del operador.", "error");
-        } else if (status === 404) {
-          Swal.fire(
-            "No se pudo entrar al panel",
-            "La ruta /api/orders-admin devolvió 404. Revisa que el backend tenga ese endpoint.",
-            "error"
-          );
-        } else {
-          Swal.fire(
-            "Error",
-            "PIN inválido o servidor no disponible",
-            "error"
-          );
-        }
+    if (!silent) {
+      const status = err?.response?.status;
+      if (status === 403) {
+        Swal.fire("PIN inválido", "Revisa el PIN del operador.", "error");
+      } else if (status === 404) {
+        Swal.fire(
+          "No se pudo entrar al panel",
+          "La ruta /api/orders-admin devolvió 404. Revisa que el backend tenga ese endpoint.",
+          "error"
+        );
+      } else {
+        Swal.fire(
+          "Error",
+          "PIN inválido o servidor no disponible",
+          "error"
+        );
       }
-      setAuthed(false);
-    } finally {
-      if (!silent) setLoading(false);
     }
-  };
+    setAuthed(false);
+  } finally {
+    if (!silent) setLoading(false);
+  }
+};
+
 
   const handleLogin = async () => {
     if (!pin.trim()) {
@@ -386,8 +421,7 @@ function AdminPage() {
           </div>
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
-              🔐 PIN:{" "}
-              <span className="font-mono text-green-400">{pin}</span>
+  🔐 Operador conectado
             </span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
               🔄 Auto-refresh:
@@ -586,9 +620,41 @@ function AdminPage() {
                                     COP
                                   </span>
                                 </p>
-                                <p className="text-xs text-slate-400">
-                                  {o.banco} • {o.titular} • {o.numero}
-                                </p>
+                                {/* Banco + titular */}
+<div className="flex flex-wrap items-center gap-2 mt-1">
+  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-800 text-slate-100 border border-slate-700">
+    <span className="text-xs">🏦</span>
+    {o.banco || "Sin banco"}
+  </span>
+
+  <span className="text-[11px] text-slate-400">
+    Titular:{" "}
+    <span className="font-medium text-slate-100">
+      {o.titular || "—"}
+    </span>
+  </span>
+</div>
+
+{/* Número de cuenta + botón copiar */}
+<div className="flex flex-wrap items-center gap-2 mt-1">
+  <span className="text-[11px] text-slate-400">
+    Nº cuenta / Nequi / Bre-B:{" "}
+    <span className="ml-1 font-mono text-slate-100">
+      {o.numero || "—"}
+    </span>
+  </span>
+
+  {o.numero && (
+    <button
+      type="button"
+      onClick={() => handleCopyCuenta(o.numero)}
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-indigo-500/60 text-[10px] text-indigo-200 hover:bg-indigo-500/10 active:scale-95 transition"
+    >
+      📋 Copiar
+    </button>
+  )}
+</div>
+
                                 <p className="text-[11px] text-slate-500 mt-1">
                                   Creada: {formatDateTime(o.creada_en)}{" "}
                                   {o.actualizada_en &&
