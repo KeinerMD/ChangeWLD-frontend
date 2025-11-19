@@ -62,45 +62,75 @@ function AdminPage() {
     "rechazada",
   ];
 
-// ===== CARGAR ÓRDENES =====
-const loadOrders = async (p, silent = false) => {
-  try {
-    if (!silent) setLoading(true);
-
-    // 👉 ahora usamos la ruta real del backend
-    const res = await axios.get(`${API_BASE}/rs-admin?pin=${encodeURIComponent(p)}`);
-
-    setOrders(Array.isArray(res.data) ? res.data : []);
-    setAuthed(true);
-  } catch (err) {
-    console.error("Error cargando órdenes:", err);
-
-    if (!silent) {
-      let msg = "Error al conectar con el panel.";
-
-      if (err.response) {
-        if (err.response.status === 403) {
-          msg = "PIN inválido. Verifica el PIN del operador.";
-        } else if (err.response.status === 404) {
-          msg = "La ruta /rs-admin no existe (404). Revisa el backend.";
-        } else {
-          msg = `Error del servidor (${err.response.status}).`;
-        }
-      } else if (err.request) {
-        msg = "No se pudo contactar al backend (Render).";
-      } else {
-        msg = err.message || msg;
+  // ===== CARGAR ÓRDENES =====
+  const loadOrders = async (p, silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      const res = await axios.get(`${API_BASE}/api/orders-admin?pin=${p}`);
+      setOrders(Array.isArray(res.data) ? res.data : []);
+      setAuthed(true);
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        Swal.fire("Error", "PIN inválido o servidor no disponible", "error");
       }
-
-      Swal.fire("No se pudo entrar al panel", msg, "error");
+      setAuthed(false);
+    } finally {
+      if (!silent) setLoading(false);
     }
+  };
 
-    setAuthed(false);
-  } finally {
-    if (!silent) setLoading(false);
-  }
-};
+  const handleLogin = async () => {
+    if (!pin.trim()) {
+      Swal.fire("PIN requerido", "Ingresa el PIN del operador", "warning");
+      return;
+    }
+    await loadOrders(pin.trim());
+  };
 
+  const handleChangeEstado = async (id, estado) => {
+    const meta = STATUS_META[estado];
+    const label = meta?.short || estado.toUpperCase();
+
+    const confirm = await Swal.fire({
+      title: `Cambiar estado a "${label}"`,
+      text: `¿Seguro que quieres marcar la orden #${id} como ${label}?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Sí, confirmar",
+      cancelButtonText: "Cancelar",
+      confirmButtonColor:
+        estado === "rechazada"
+          ? "#dc2626"
+          : estado === "pagada"
+          ? "#16a34a"
+          : "#2563eb",
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+      const res = await axios.put(`${API_BASE}/api/orders/${id}/estado`, {
+        estado,
+        pin,
+      });
+      if (res.data.ok) {
+        Swal.fire({
+          title: "✅ Estado actualizado",
+          text: `Orden #${id} → ${label}`,
+          icon: "success",
+          timer: 1300,
+          showConfirmButton: false,
+        });
+        await loadOrders(pin, true);
+      } else {
+        Swal.fire("Error", res.data.error || "No se pudo actualizar", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      Swal.fire("Error", "No se pudo realizar la actualización", "error");
+    }
+  };
 
   // ===== AUTO-REFRESH =====
   useEffect(() => {
@@ -542,15 +572,6 @@ const loadOrders = async (p, silent = false) => {
                                       </>
                                     )}
                                 </p>
-                                <p className="text-[11px] text-slate-500">
-  World ID:{" "}
-  {o.verified ? (
-    <span className="text-emerald-400 font-semibold">✔ Verificado</span>
-  ) : (
-    <span className="text-red-400 font-semibold">✖ Sin verificación</span>
-  )}
-</p>
-
                               </div>
 
                               {/* ESTADO + ACCIONES */}
