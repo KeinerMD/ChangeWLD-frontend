@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { API_BASE } from "./apiConfig";
 import Swal from "sweetalert2";
@@ -41,6 +41,9 @@ function App() {
     numero: "",
   });
 
+  // 🔗 Guardar el id interno de la transacción de World App
+  const lastTxIdRef = useRef(null);
+
   // ========= ENVÍO DE WLD (sendTransaction) =========
   // Envía los WLD del usuario hacia tu wallet destino en World Chain
   const sendWldToDestination = async (amountWLD) => {
@@ -50,7 +53,7 @@ function App() {
         "La transferencia solo funciona dentro de la mini app en World App.",
         "warning"
       );
-      return false;
+      return null;
     }
 
     const tokenAddress = import.meta.env.VITE_WLD_TOKEN_ADDRESS;
@@ -65,7 +68,7 @@ function App() {
         "Faltan direcciones en la configuración. Contacta al soporte de ChangeWLD.",
         "error"
       );
-      return false;
+      return null;
     }
 
     // Convertir a unidades con 18 decimales
@@ -99,11 +102,10 @@ function App() {
           "World App no pudo completar la transferencia de WLD.",
           "error"
         );
-        return false;
+        return null;
       }
 
       console.log("✅ Transacción enviada:", finalPayload);
-      // finalPayload.transaction_id → lo puedes guardar en backend más adelante
 
       await Swal.fire(
         "WLD enviados",
@@ -111,7 +113,8 @@ function App() {
         "success"
       );
 
-      return true;
+      // 🔹 Devolvemos el id interno de la transacción para guardarlo con la orden
+      return finalPayload.transaction_id || null;
     } catch (err) {
       Swal.close();
       console.error("Error inesperado en sendWldToDestination:", err);
@@ -120,7 +123,7 @@ function App() {
         "No se pudo iniciar la transacción en World App.",
         "error"
       );
-      return false;
+      return null;
     }
   };
 
@@ -202,8 +205,11 @@ function App() {
     }
 
     // 1) Enviar WLD desde la wallet del usuario a tu wallet destino
-    const ok = await sendWldToDestination(montoWLD);
-    if (!ok) return; // si falla la transacción, NO avanzamos
+    const txId = await sendWldToDestination(montoWLD);
+    if (!txId) return; // si falla la transacción, NO avanzamos
+
+    // Guardamos el id interno de la transacción para atarlo a la orden
+    lastTxIdRef.current = txId;
 
     // 2) Si todo bien, pasamos a los datos bancarios
     setStep(2);
@@ -254,6 +260,8 @@ function App() {
         montoCOP: Number(montoCOP.toFixed(2)),
         verified: isVerified,
         nullifier: verificationNullifier,
+        // 🔹 Nuevo: guardamos el id interno de la tx de World App
+        wld_tx_id: lastTxIdRef.current || null,
       });
 
       Swal.close();
@@ -544,6 +552,14 @@ function App() {
                     <p>
                       <b>Número:</b> {orderInfo.numero}
                     </p>
+                    {orderInfo.wld_tx_id && (
+                      <p className="mt-1 text-[11px] text-gray-500">
+                        <b>Tx World App:</b>{" "}
+                        <span className="font-mono">
+                          {orderInfo.wld_tx_id}
+                        </span>
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -558,6 +574,7 @@ function App() {
                   setIsVerified(false);
                   setVerificationNullifier(null);
                   setHasShownPaidAlert(false);
+                  lastTxIdRef.current = null; // 🔄 limpiamos la tx guardada
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
