@@ -6,6 +6,20 @@ import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
 import BankSelector from "./components/BankSelector";
 import VerifyWorldID from "./components/VerifyWorldID";
+import { MiniKit } from "@worldcoin/minikit-js";
+import { WLD_ABI } from "./wldAbi";
+
+// Helper: convierte "3.125" a uint256 con 18 decimales (BigInt → string)
+function toTokenUnits(amountStr, decimals = 18) {
+  if (!amountStr) return 0n;
+
+  const [intPartRaw, decPartRaw] = String(amountStr).split(".");
+  const intPart = intPartRaw || "0";
+  const decPart = (decPartRaw || "").padEnd(decimals, "0").slice(0, decimals);
+
+  const base = 10n ** BigInt(decimals);
+  return BigInt(intPart) * base + BigInt(decPart || "0");
+}
 
 function App() {
   const [step, setStep] = useState(1);
@@ -26,6 +40,89 @@ function App() {
     titular: "",
     numero: "",
   });
+
+  // ========= ENVÍO DE WLD (sendTransaction) =========
+  // Envía los WLD del usuario hacia tu wallet destino en World Chain
+  const sendWldToDestination = async (amountWLD) => {
+    if (!MiniKit.isInstalled()) {
+      await Swal.fire(
+        "Abre desde World App",
+        "La transferencia solo funciona dentro de la mini app en World App.",
+        "warning"
+      );
+      return false;
+    }
+
+    const tokenAddress = import.meta.env.VITE_WLD_TOKEN_ADDRESS;
+    const destination = import.meta.env.VITE_WLD_DESTINATION;
+
+    if (!tokenAddress || !destination) {
+      console.error(
+        "Falta VITE_WLD_TOKEN_ADDRESS o VITE_WLD_DESTINATION en el .env del frontend"
+      );
+      await Swal.fire(
+        "Error de configuración",
+        "Faltan direcciones en la configuración. Contacta al soporte de ChangeWLD.",
+        "error"
+      );
+      return false;
+    }
+
+    // Convertir a unidades con 18 decimales
+    const amountWei = toTokenUnits(String(amountWLD), 18);
+
+    try {
+      Swal.fire({
+        title: "Firmando en World App...",
+        text: "Confirma la transferencia de WLD a ChangeWLD.",
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+      });
+
+      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+        transaction: [
+          {
+            address: tokenAddress,
+            abi: WLD_ABI,
+            functionName: "transfer",
+            args: [destination, amountWei.toString()],
+          },
+        ],
+      });
+
+      Swal.close();
+
+      if (finalPayload.status === "error") {
+        console.error("Error en sendTransaction:", finalPayload);
+        await Swal.fire(
+          "Transferencia cancelada",
+          "World App no pudo completar la transferencia de WLD.",
+          "error"
+        );
+        return false;
+      }
+
+      console.log("✅ Transacción enviada:", finalPayload);
+      // finalPayload.transaction_id → lo puedes guardar en backend más adelante
+
+      await Swal.fire(
+        "WLD enviados",
+        "La transacción fue enviada. En unos segundos deberías ver los WLD en la wallet destino.",
+        "success"
+      );
+
+      return true;
+    } catch (err) {
+      Swal.close();
+      console.error("Error inesperado en sendWldToDestination:", err);
+      await Swal.fire(
+        "Error al enviar WLD",
+        "No se pudo iniciar la transacción en World App.",
+        "error"
+      );
+      return false;
+    }
+  };
 
   // ========= 1) CARGAR TASA DESDE BACKEND (con auto-refresh) =========
   useEffect(() => {
@@ -89,20 +186,9 @@ function App() {
   };
 
   // ========= ETAPA 1: CONFIRMAR MONTO =========
-  const handleStep1 = () => {
-    const monto = Number(montoWLD || 0);
-
-    if (!monto || monto <= 0) {
+  const handleStep1 = async () => {
+    if (!montoWLD || Number(montoWLD) <= 0) {
       Swal.fire("Monto inválido", "Ingresa un valor válido en WLD.", "warning");
-      return;
-    }
-
-    if (!rate || !rate.wld_cop_usuario) {
-      Swal.fire(
-        "Tasa no disponible",
-        "Aún no se ha cargado la tasa actual. Espera unos segundos e inténtalo de nuevo.",
-        "warning"
-      );
       return;
     }
 
@@ -115,8 +201,12 @@ function App() {
       return;
     }
 
+    // 1) Enviar WLD desde la wallet del usuario a tu wallet destino
+    const ok = await sendWldToDestination(montoWLD);
+    if (!ok) return; // si falla la transacción, NO avanzamos
+
+    // 2) Si todo bien, pasamos a los datos bancarios
     setStep(2);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // ========= ETAPA 2: CONFIRMAR DATOS BANCARIOS Y CREAR ORDEN =========
@@ -270,9 +360,7 @@ function App() {
 
         {/* CONTENIDO */}
         <AnimatePresence mode="wait">
-          {/* ============================
-              ETAPA 1 — MONTO + WORLD ID
-          ============================ */}
+          {/* ETAPA 1 — MONTO + WORLD ID */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -302,7 +390,9 @@ function App() {
 
               <div className="bg-indigo-50 p-4 rounded-xl text-center">
                 <p className="text-sm text-gray-600">Tasa actual:</p>
-                <p className="text-lg font-bold text-indigo-700">{tasaTexto}</p>
+                <p className="text-lg font-bold text-indigo-700">
+                  {tasaTexto}
+                </p>
 
                 <p className="text-xs text-gray-500 mt-2">Recibirías:</p>
                 <p className="text-2xl font-extrabold text-indigo-700">
@@ -346,9 +436,7 @@ function App() {
             </motion.div>
           )}
 
-          {/* ============================
-              ETAPA 2 — DATOS BANCARIOS
-          ============================ */}
+          {/* ETAPA 2 — DATOS BANCARIOS */}
           {step === 2 && (
             <motion.div
               key="step2"
@@ -417,14 +505,12 @@ function App() {
             </motion.div>
           )}
 
-          {/* ============================
-              ETAPA 3 — ESTADO DE ORDEN
-          ============================ */}
+          {/* ETAPA 3 — ESTADO DE ORDEN */}
           {step === 3 && (
             <motion.div
               key="step3"
               initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
+              animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -40 }}
               transition={{ duration: 0.25 }}
             >
