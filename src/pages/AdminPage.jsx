@@ -1,3 +1,4 @@
+// src/pages/AdminPage.jsx
 import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { API_BASE } from "../apiConfig";
@@ -33,10 +34,10 @@ function AdminPage() {
     },
     recibida_wld: {
       label: "WLD Recibidos",
-      short: "Recibida WLD",
+      short: "WLD Recibidos",
       colorPill: "bg-purple-500",
       colorBadge: "bg-purple-100 text-purple-800 border-purple-300",
-      icon: "🔍",
+      icon: "🟣",
     },
     pagada: {
       label: "Pagadas",
@@ -62,47 +63,46 @@ function AdminPage() {
     "rechazada",
   ];
 
-  // ===== helper copiar número de cuenta =====
-  const handleCopy = async (text) => {
+  // ===== COPIAR NÚMERO DE CUENTA =====
+  const copyToClipboard = async (texto, label = "Texto copiado") => {
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(String(texto || ""));
+        Swal.fire({
+          toast: true,
+          position: "top",
+          timer: 1200,
+          showConfirmButton: false,
+          icon: "success",
+          title: label,
+        });
+      } else {
+        throw new Error("Clipboard no disponible");
       }
-      Swal.fire({
-        title: "Copiado",
-        text: `Número "${text}" copiado al portapapeles.`,
-        icon: "success",
-        timer: 1100,
-        showConfirmButton: false,
-      });
     } catch (err) {
       console.error("Error al copiar:", err);
-      Swal.fire(
-        "Ups",
-        "No se pudo copiar, hazlo manualmente si es necesario.",
-        "warning"
-      );
+      Swal.fire("Error", "No se pudo copiar al portapapeles.", "error");
     }
   };
 
-  // ===== CARGAR ÓRDENES =====
+  // ===== CARGAR ÓRDENES (usa POST con PIN en body) =====
   const loadOrders = async (p, silent = false) => {
     try {
       if (!silent) setLoading(true);
 
-      // Puedes usar /api/orders-admin o /rs-admin.
-      const res = await axios.get(`${API_BASE}/api/orders-admin`, {
-        params: { pin: p },
+      const res = await axios.post(`${API_BASE}/api/orders-admin`, {
+        pin: p,
       });
 
-      setOrders(Array.isArray(res.data) ? res.data : []);
+      const data = Array.isArray(res.data) ? res.data : [];
+      setOrders(data);
       setAuthed(true);
     } catch (err) {
-      console.error("Error cargando órdenes:", err);
+      console.error("Error cargando órdenes:", err?.response || err);
       if (!silent) {
         Swal.fire(
-          "No se pudo entrar al panel",
-          "Verifica el PIN o que el backend esté en línea.",
+          "Error",
+          "PIN inválido o servidor no disponible.",
           "error"
         );
       }
@@ -113,21 +113,14 @@ function AdminPage() {
   };
 
   const handleLogin = async () => {
-    const trimmed = pin.trim();
-
-    // Pequeña validación local para que no prueben basura:
-    if (!/^\d{4,6}$/.test(trimmed)) {
-      Swal.fire(
-        "PIN inválido",
-        "El PIN debe ser numérico de 4 a 6 dígitos.",
-        "warning"
-      );
+    if (!pin.trim()) {
+      Swal.fire("PIN requerido", "Ingresa el PIN del operador.", "warning");
       return;
     }
-
-    await loadOrders(trimmed);
+    await loadOrders(pin.trim());
   };
 
+  // ===== CAMBIO DE ESTADO =====
   const handleChangeEstado = async (id, estado) => {
     const meta = STATUS_META[estado];
     const label = meta?.short || estado.toUpperCase();
@@ -150,10 +143,15 @@ function AdminPage() {
     if (!confirm.isConfirmed) return;
 
     try {
-      const res = await axios.put(`${API_BASE}/api/orders/${id}/estado`, {
-        estado,
-        pin,
-      });
+      const res = await axios.put(
+        `${API_BASE}/api/orders/${id}/estado`,
+        { estado },
+        {
+          headers: {
+            "x-admin-pin": pin, // 🔐 va en header, no en la URL
+          },
+        }
+      );
 
       if (res.data.ok) {
         Swal.fire({
@@ -163,13 +161,21 @@ function AdminPage() {
           timer: 1300,
           showConfirmButton: false,
         });
-        await loadOrders(pin, true);
+        await loadOrders(pin, true); // recarga silenciosa
       } else {
-        Swal.fire("Error", res.data.error || "No se pudo actualizar", "error");
+        Swal.fire(
+          "Error",
+          res.data.error || "No se pudo actualizar la orden.",
+          "error"
+        );
       }
     } catch (err) {
-      console.error(err);
-      Swal.fire("Error", "No se pudo realizar la actualización", "error");
+      console.error("Error actualizando estado:", err);
+      Swal.fire(
+        "Error",
+        "No se pudo realizar la actualización de estado.",
+        "error"
+      );
     }
   };
 
@@ -249,12 +255,15 @@ function AdminPage() {
   const filteredOrders = useMemo(() => {
     let list = [...orders];
 
+    // Filtro por estado
     if (statusFilter !== "all") {
       list = list.filter((o) => o.estado === statusFilter);
     }
 
+    // Filtro por fecha
     list = list.filter((o) => isInDateFilter(o));
 
+    // Filtro de búsqueda
     if (searchTerm.trim()) {
       const q = searchTerm.trim().toLowerCase();
       list = list.filter((o) => {
@@ -273,6 +282,7 @@ function AdminPage() {
       });
     }
 
+    // Ordenar por fecha descendente (más nuevas primero)
     list.sort((a, b) => {
       const da = new Date(a.creada_en || a.actualizada_en || 0).getTime();
       const db = new Date(b.creada_en || b.actualizada_en || 0).getTime();
@@ -282,6 +292,7 @@ function AdminPage() {
     return list;
   }, [orders, statusFilter, dateFilter, searchTerm]);
 
+  // Agrupar por día y luego por estado
   const groupedByDay = useMemo(() => {
     const map = {};
 
@@ -301,12 +312,14 @@ function AdminPage() {
 
     const groups = Object.values(map);
 
+    // Ordenar días (más recientes primero)
     groups.sort((a, b) => {
       const da = new Date(a.orders[0]?.creada_en || 0).getTime();
       const db = new Date(b.orders[0]?.creada_en || 0).getTime();
       return db - da;
     });
 
+    // Dentro de cada día agrupar por estado
     return groups.map((g) => {
       const byStatus = {};
       g.orders.forEach((o) => {
@@ -333,7 +346,9 @@ function AdminPage() {
       }
     });
 
-    const totalPendientes = orders.filter((o) => o.estado === "pendiente").length;
+    const totalPendientes = orders.filter(
+      (o) => o.estado === "pendiente"
+    ).length;
     const totalPagadas = orders.filter((o) => o.estado === "pagada").length;
 
     return {
@@ -345,7 +360,7 @@ function AdminPage() {
     };
   }, [orders]);
 
-  // ===== RENDER =====
+  // ===== RENDER LOGIN =====
   if (!authed) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center px-4">
@@ -367,27 +382,27 @@ function AdminPage() {
           </p>
           <input
             type="password"
-            className="w-full mb-4 rounded-xl bg-slate-900 border border-slate-600 px-4 py-3 text-slate-100 text-center tracking-[0.3em] font-mono text-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="••••"
+            className="w-full mb-4 rounded-xl bg-slate-900 border border-slate-600 px-4 py-3 text-slate-100 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="PIN"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
-            maxLength={6}
           />
           <button
             onClick={handleLogin}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-all"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-all text-sm"
           >
             Entrar al panel
           </button>
           <p className="text-[11px] text-slate-500 text-center mt-4">
-            Para mayor seguridad, cambia el PIN en el backend (.env →
-            <code> OPERATOR_PIN</code>).
+            Cambia el PIN desde tu archivo <code>.env</code> del backend
+            (<code>OPERATOR_PIN</code>).
           </p>
         </motion.div>
       </div>
     );
   }
 
+  // ===== RENDER PANEL =====
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-10">
       {/* HEADER */}
@@ -405,8 +420,8 @@ function AdminPage() {
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
               🔐 PIN:{" "}
-              <span className="font-mono text-green-400">
-                {"*".repeat(pin.length || 4)}
+              <span className="font-mono text-green-400 tracking-widest">
+                {pin}
               </span>
             </span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
@@ -439,7 +454,7 @@ function AdminPage() {
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
             <p className="text-xs text-slate-400 mb-1">WLD procesados hoy</p>
             <p className="text-2xl font-bold text-indigo-300">
-              {stats.totalWldToday.toFixed(2)}
+              {stats.totalWldToday.toFixed(4)}
               <span className="text-xs text-slate-500 ml-1">WLD</span>
             </p>
           </div>
@@ -585,20 +600,22 @@ function AdminPage() {
                           {list.map((o) => (
                             <div
                               key={o.id}
-                              className="px-3 py-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+                              className="px-3 py-3 flex flex-col gap-3 md:flex-row md:items-stretch md:justify-between"
                             >
                               {/* INFO IZQUIERDA */}
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
+                              <div className="flex-1 min-w-0">
+                                {/* ID + nombre */}
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
                                   <span className="text-xs text-slate-500">
                                     #{o.id}
                                   </span>
-                                  <span className="text-sm font-semibold text-slate-100">
-                                    {o.nombre}
+                                  <span className="text-sm font-semibold text-slate-100 truncate max-w-[220px] md:max-w-xs">
+                                    {o.nombre || o.titular}
                                   </span>
                                 </div>
 
-                                <p className="text-xs text-slate-400 mb-2">
+                                {/* Monto */}
+                                <p className="text-xs text-slate-400 mb-1">
                                   {o.montoWLD} WLD →{" "}
                                   <span className="font-semibold text-indigo-300">
                                     {Number(o.montoCOP || 0).toLocaleString(
@@ -608,117 +625,122 @@ function AdminPage() {
                                   </span>
                                 </p>
 
-                                {/* BLOQUE DESTACADO: BANCO + CUENTA */}
-                                <div className="inline-flex flex-wrap items-center gap-3 px-4 py-2 rounded-2xl bg-slate-950 border border-slate-700 shadow-inner">
-                                  <div className="flex flex-col mr-3">
-                                    <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                                      Banco
-                                    </span>
-                                    <span className="text-sm font-semibold text-slate-50">
-                                      {o.banco || "—"}
-                                    </span>
-                                    <span className="text-[11px] text-slate-400">
+                                {/* BLOQUE BANCO + CUENTA (GRANDE) */}
+                                <div className="mt-2 bg-slate-950/60 border border-indigo-500/50 rounded-xl px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                  <div className="text-xs text-slate-200">
+                                    <p className="font-semibold text-indigo-300 text-[11px] uppercase tracking-wide">
+                                      {o.banco || "Banco / Billetera"}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400">
                                       Titular:{" "}
-                                      <span className="font-medium text-slate-100">
-                                        {o.titular || "—"}
+                                      <span className="text-slate-100">
+                                        {o.titular}
                                       </span>
-                                    </span>
+                                    </p>
+                                    <p className="text-[11px] text-slate-400">
+                                      Número:{" "}
+                                      <span className="font-mono text-slate-50 text-[11px]">
+                                        {o.numero}
+                                      </span>
+                                    </p>
                                   </div>
 
-                                  <div className="w-px h-10 bg-slate-700/80" />
-
-                                  <div className="flex flex-col">
-                                    <span className="text-[10px] uppercase tracking-wide text-slate-400">
-                                      Nº cuenta / Nequi / Bre-B
-                                    </span>
-                                    <span className="font-mono text-lg text-amber-300 tracking-wide">
-                                      {o.numero || "—"}
-                                    </span>
+                                  <div className="flex flex-row md:flex-col gap-2 md:items-end mt-1 md:mt-0">
+                                    <button
+                                      onClick={() =>
+                                        copyToClipboard(
+                                          o.numero,
+                                          "Número de cuenta copiado"
+                                        )
+                                      }
+                                      className="inline-flex items-center justify-center gap-1 px-3 py-1 rounded-lg text-[11px] bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all"
+                                    >
+                                      📋 Copiar número
+                                    </button>
                                   </div>
-
-                                  <button
-                                    onClick={() => o.numero && handleCopy(o.numero)}
-                                    className="ml-auto bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[11px] px-3 py-1 rounded-lg flex items-center gap-1"
-                                  >
-                                    📋 Copiar
-                                  </button>
                                 </div>
 
-                                <p className="text-[11px] text-slate-500 mt-2">
-                                  Creada: {formatDateTime(o.creada_en)}{" "}
-                                  {o.actualizada_en &&
-                                    o.actualizada_en !== o.creada_en && (
-                                      <>
-                                        {" "}
-                                        • Actualizada:{" "}
-                                        {formatDateTime(o.actualizada_en)}
-                                      </>
+                                {/* FECHAS + WORLD ID + TX */}
+                                <div className="mt-2 space-y-0.5">
+                                  <p className="text-[11px] text-slate-500">
+                                    Creada: {formatDateTime(o.creada_en)}{" "}
+                                    {o.actualizada_en &&
+                                      o.actualizada_en !== o.creada_en && (
+                                        <>
+                                          • Actualizada:{" "}
+                                          {formatDateTime(o.actualizada_en)}
+                                        </>
+                                      )}
+                                  </p>
+                                  <p className="text-[11px] text-slate-500">
+                                    World ID:{" "}
+                                    {o.verified ? (
+                                      <span className="text-emerald-400 font-semibold">
+                                        ✔ Verificado
+                                      </span>
+                                    ) : (
+                                      <span className="text-red-400 font-semibold">
+                                        ✖ Sin verificación
+                                      </span>
                                     )}
-                                </p>
-
-                                <p className="text-[11px] text-slate-500">
-                                  World ID:{" "}
-                                  {o.verified ? (
-                                    <span className="text-emerald-400 font-semibold">
-                                      ✔ Verificado
-                                    </span>
-                                  ) : (
-                                    <span className="text-red-400 font-semibold">
-                                      ✖ Sin verificación
-                                    </span>
+                                  </p>
+                                  {o.wld_tx_id && (
+                                    <p className="text-[11px] text-slate-500 break-all">
+                                      Tx World App:{" "}
+                                      <span className="font-mono">
+                                        {o.wld_tx_id}
+                                      </span>
+                                    </p>
                                   )}
-                                </p>
+                                </div>
                               </div>
 
                               {/* ESTADO + ACCIONES */}
-                              <span
-  className={`px-4 py-1.5 border text-xs md:text-sm rounded-full text-slate-900 font-semibold ${
-    meta?.colorBadge ||
-    "bg-slate-200 text-slate-900 border-slate-300"
-  }`}
->
-  {meta?.short || o.estado.toUpperCase()}
-</span>
+                              <div className="flex flex-col items-end gap-2 mt-1 md:mt-0 md:w-64">
+                                {/* Badge de estado */}
+                                <span
+                                  className={`px-3 py-1 border text-[11px] rounded-full font-semibold ${
+                                    STATUS_META[o.estado]?.colorBadge ||
+                                    "bg-slate-200 text-slate-900 border-slate-300"
+                                  }`}
+                                >
+                                  {STATUS_META[o.estado]?.short ||
+                                    o.estado.toUpperCase()}
+                                </span>
 
+                                {/* Botones de siguiente estado (más grandes) */}
+                                <div className="flex flex-wrap gap-2 justify-end">
+                                  {getNextStates(o.estado).map(
+                                    (estadoSig) => {
+                                      const m = STATUS_META[estadoSig];
+                                      const labelBtn =
+                                        m?.short ||
+                                        estadoSig.toUpperCase();
+                                      const base =
+                                        estadoSig === "pagada"
+                                          ? "bg-emerald-600 hover:bg-emerald-500"
+                                          : estadoSig === "rechazada"
+                                          ? "bg-red-600 hover:bg-red-500"
+                                          : "bg-sky-600 hover:bg-sky-500";
 
-                                <div className="flex flex-wrap gap-3 justify-end">
-  {getNextStates(o.estado).map((estadoSig) => {
-    const m = STATUS_META[estadoSig];
-    const labelBtn = m?.short || estadoSig.toUpperCase();
-    const base =
-      estadoSig === "pagada"
-        ? "bg-emerald-600 hover:bg-emerald-500"
-        : estadoSig === "rechazada"
-        ? "bg-red-600 hover:bg-red-500"
-        : "bg-sky-600 hover:bg-sky-500";
-
-    return (
-      <button
-        key={estadoSig}
-        onClick={() => handleChangeEstado(o.id, estadoSig)}
-        className={`
-          ${base}
-          text-white
-          text-xs md:text-sm
-          font-semibold
-          px-4 md:px-5
-          py-2
-          rounded-xl
-          shadow-md
-          transition-all
-          flex items-center gap-1
-        `}
-      >
-        {estadoSig === "enviada" && "📤"}
-        {estadoSig === "recibida_wld" && "🟣"}
-        {estadoSig === "pagada" && "💸"}
-        {estadoSig === "rechazada" && "❌"}
-        <span>{labelBtn}</span>
-      </button>
-    );
-  })}
-</div>
-
+                                      return (
+                                        <button
+                                          key={estadoSig}
+                                          onClick={() =>
+                                            handleChangeEstado(
+                                              o.id,
+                                              estadoSig
+                                            )
+                                          }
+                                          className={`${base} text-white text-[11px] md:text-xs font-semibold px-3 md:px-4 py-1.5 rounded-lg transition-all`}
+                                        >
+                                          {labelBtn}
+                                        </button>
+                                      );
+                                    }
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           ))}
                         </div>
