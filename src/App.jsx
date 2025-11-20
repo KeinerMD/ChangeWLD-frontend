@@ -45,7 +45,6 @@ function App() {
   const lastTxIdRef = useRef(null);
 
   // ========= ENVÍO DE WLD (sendTransaction) =========
-  // Envía los WLD del usuario hacia tu wallet destino en World Chain
   const sendWldToDestination = async (amountWLD) => {
     if (!MiniKit.isInstalled()) {
       await Swal.fire(
@@ -113,7 +112,6 @@ function App() {
         "success"
       );
 
-      // 🔹 Devolvemos el id interno de la transacción para guardarlo con la orden
       return finalPayload.transaction_id || null;
     } catch (err) {
       Swal.close();
@@ -146,11 +144,8 @@ function App() {
         .finally(() => setLoadingRate(false));
     };
 
-    // Primera vez
     fetchRate();
-    // Actualizar cada 60 segundos
     const interval = setInterval(fetchRate, 60_000);
-
     return () => clearInterval(interval);
   }, []);
 
@@ -180,7 +175,7 @@ function App() {
     }
   }, [orderInfo, hasShownPaidAlert]);
 
-  // ========= CALLBACK CUANDO SE VERIFICA (real o modo pruebas) =========
+  // ========= CALLBACK CUANDO SE VERIFICA =========
   const handleWorldIdVerified = (nullifierValue) => {
     setIsVerified(true);
     setVerificationNullifier(
@@ -204,14 +199,10 @@ function App() {
       return;
     }
 
-    // 1) Enviar WLD desde la wallet del usuario a tu wallet destino
     const txId = await sendWldToDestination(montoWLD);
-    if (!txId) return; // si falla la transacción, NO avanzamos
+    if (!txId) return;
 
-    // Guardamos el id interno de la transacción para atarlo a la orden
     lastTxIdRef.current = txId;
-
-    // 2) Si todo bien, pasamos a los datos bancarios
     setStep(2);
   };
 
@@ -260,7 +251,6 @@ function App() {
         montoCOP: Number(montoCOP.toFixed(2)),
         verified: isVerified,
         nullifier: verificationNullifier,
-        // 🔹 Nuevo: guardamos el id interno de la tx de World App
         wld_tx_id: lastTxIdRef.current || null,
       });
 
@@ -326,11 +316,11 @@ function App() {
 
   // ========= UI PRINCIPAL =========
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 flex justify-center items-center px-4 py-6">
+    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 flex justify-center items-start px-4 py-6">
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white shadow-2xl rounded-3xl p-7 w-full max-w-md"
+        className="bg-white shadow-2xl rounded-3xl p-7 w-full max-w-md box-border"
       >
         {/* HEADER */}
         <div className="mb-5 text-center">
@@ -412,7 +402,6 @@ function App() {
                 </p>
               </div>
 
-              {/* WORLD ID (device / minikit) */}
               <div className="mt-5">
                 <VerifyWorldID onVerified={handleWorldIdVerified} />
 
@@ -518,7 +507,7 @@ function App() {
             <motion.div
               key="step3"
               initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, y: 0 }}
+              animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -40 }}
               transition={{ duration: 0.25 }}
             >
@@ -526,7 +515,7 @@ function App() {
                 Tu orden ha sido creada correctamente 🎉
               </p>
 
-              <div className="bg-indigo-50 p-4 rounded-xl text-center mb-4 w-full max-w-full break-words overflow-hidden">
+              <div className="bg-indigo-50 p-4 rounded-2xl text-center mb-4 w-full max-w-sm mx-auto box-border">
                 <p className="text-sm text-gray-500">Orden #</p>
                 <p className="text-3xl font-bold text-indigo-700">
                   {orderInfo?.id}
@@ -538,31 +527,31 @@ function App() {
                 </p>
 
                 {orderInfo && (
-  <div className="mt-4 text-xs text-gray-600 text-left space-y-1">
-    <p>
-      <b>Monto:</b> {orderInfo.montoWLD} WLD →{" "}
-      {formatCOP(orderInfo.montoCOP)} COP
-    </p>
-    <p>
-      <b>Banco:</b> {orderInfo.banco}
-    </p>
-    <p>
-      <b>Titular:</b> {orderInfo.titular}
-    </p>
-    <p>
-      <b>Número:</b> {orderInfo.numero}
-    </p>
+                  <div className="mt-4 text-xs text-gray-600 text-left space-y-1">
+                    <p>
+                      <b>Monto:</b> {orderInfo.montoWLD} WLD →{" "}
+                      {formatCOP(orderInfo.montoCOP)} COP
+                    </p>
+                    <p>
+                      <b>Banco:</b> {orderInfo.banco}
+                    </p>
+                    <p>
+                      <b>Titular:</b> {orderInfo.titular}
+                    </p>
+                    <p>
+                      <b>Número:</b> {orderInfo.numero}
+                    </p>
 
-    {orderInfo.wld_tx_id && (
-      <div className="pt-2 text-[11px] text-gray-500">
-        <p className="font-semibold mb-1">Tx World App:</p>
-        <div className="font-mono bg-white/70 rounded-lg px-2 py-1 break-all">
-          {orderInfo.wld_tx_id}
-        </div>
-      </div>
-    )}
-  </div>
-)}
+                    {orderInfo.wld_tx_id && (
+                      <div className="pt-2 text-[11px] text-gray-500">
+                        <p className="font-semibold mb-1">Tx World App:</p>
+                        <div className="font-mono bg-white/70 rounded-lg px-2 py-1 break-all leading-snug">
+                          {orderInfo.wld_tx_id}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <button
@@ -575,7 +564,7 @@ function App() {
                   setIsVerified(false);
                   setVerificationNullifier(null);
                   setHasShownPaidAlert(false);
-                  lastTxIdRef.current = null; // 🔄 limpiamos la tx guardada
+                  lastTxIdRef.current = null;
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
