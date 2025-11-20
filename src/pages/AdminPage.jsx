@@ -87,30 +87,37 @@ function AdminPage() {
 
   // ===== CARGAR ÓRDENES (usa POST con PIN en body) =====
   const loadOrders = async (p, silent = false) => {
-    try {
-      if (!silent) setLoading(true);
+  try {
+    if (!silent) setLoading(true);
 
-      const res = await axios.post(`${API_BASE}/api/orders-admin`, {
-        pin: p,
-      });
+    const pinSanitized = (p || "").trim();
 
-      const data = Array.isArray(res.data) ? res.data : [];
-      setOrders(data);
-      setAuthed(true);
-    } catch (err) {
-      console.error("Error cargando órdenes:", err?.response || err);
-      if (!silent) {
-        Swal.fire(
-          "Error",
-          "PIN inválido o servidor no disponible.",
-          "error"
-        );
+    const res = await axios.post(
+      `${API_BASE}/api/orders-admin`,
+      {},
+      {
+        headers: {
+          "x-admin-pin": pinSanitized,
+        },
       }
-      setAuthed(false);
-    } finally {
-      if (!silent) setLoading(false);
+    );
+
+    setOrders(Array.isArray(res.data) ? res.data : []);
+    setAuthed(true);
+  } catch (err) {
+    console.error(err);
+    if (!silent) {
+      Swal.fire(
+        "Error",
+        "PIN inválido o servidor no disponible",
+        "error"
+      );
     }
-  };
+    setAuthed(false);
+  } finally {
+    if (!silent) setLoading(false);
+  }
+};
 
   const handleLogin = async () => {
     if (!pin.trim()) {
@@ -144,14 +151,14 @@ function AdminPage() {
 
     try {
       const res = await axios.put(
-        `${API_BASE}/api/orders/${id}/estado`,
-        { estado },
-        {
-          headers: {
-            "x-admin-pin": pin, // 🔐 va en header, no en la URL
-          },
-        }
-      );
+  `${API_BASE}/api/orders/${id}/estado`,
+  { estado },
+  {
+    headers: {
+      "x-admin-pin": pin.trim(),
+    },
+  }
+);
 
       if (res.data.ok) {
         Swal.fire({
@@ -419,11 +426,8 @@ function AdminPage() {
           </div>
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
-              🔐 PIN:{" "}
-              <span className="font-mono text-green-400 tracking-widest">
-                {pin}
-              </span>
-            </span>
+  🔐 Acceso operador activo
+</span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
               🔄 Auto-refresh:
               <select
