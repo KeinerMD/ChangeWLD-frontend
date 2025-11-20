@@ -526,7 +526,7 @@ function App() {
                 Tu orden ha sido creada correctamente 🎉
               </p>
 
-              <div className="bg-indigo-50 p-4 rounded-xl text-center mb-4">
+              <div className="bg-indigo-50 p-4 rounded-xl text-center mb-4 w-full max-w-full break-words overflow-hidden">
                 <p className="text-sm text-gray-500">Orden #</p>
                 <p className="text-3xl font-bold text-indigo-700">
                   {orderInfo?.id}
@@ -538,30 +538,31 @@ function App() {
                 </p>
 
                 {orderInfo && (
-                  <div className="mt-4 text-xs text-gray-600 text-left">
-                    <p>
-                      <b>Monto:</b> {orderInfo.montoWLD} WLD →{" "}
-                      {formatCOP(orderInfo.montoCOP)} COP
-                    </p>
-                    <p>
-                      <b>Banco:</b> {orderInfo.banco}
-                    </p>
-                    <p>
-                      <b>Titular:</b> {orderInfo.titular}
-                    </p>
-                    <p>
-                      <b>Número:</b> {orderInfo.numero}
-                    </p>
-                    {orderInfo.wld_tx_id && (
-                      <p className="mt-1 text-[11px] text-gray-500">
-                        <b>Tx World App:</b>{" "}
-                        <span className="font-mono">
-                          {orderInfo.wld_tx_id}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                )}
+  <div className="mt-4 text-xs text-gray-600 text-left space-y-1">
+    <p>
+      <b>Monto:</b> {orderInfo.montoWLD} WLD →{" "}
+      {formatCOP(orderInfo.montoCOP)} COP
+    </p>
+    <p>
+      <b>Banco:</b> {orderInfo.banco}
+    </p>
+    <p>
+      <b>Titular:</b> {orderInfo.titular}
+    </p>
+    <p>
+      <b>Número:</b> {orderInfo.numero}
+    </p>
+
+    {orderInfo.wld_tx_id && (
+      <div className="pt-2 text-[11px] text-gray-500">
+        <p className="font-semibold mb-1">Tx World App:</p>
+        <div className="font-mono bg-white/70 rounded-lg px-2 py-1 break-all">
+          {orderInfo.wld_tx_id}
+        </div>
+      </div>
+    )}
+  </div>
+)}
               </div>
 
               <button
