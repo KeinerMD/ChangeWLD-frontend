@@ -85,39 +85,41 @@ function AdminPage() {
     }
   };
 
-  // ===== CARGAR ÓRDENES (usa POST con PIN en body) =====
+  // ===== CARGAR ÓRDENES (POST con PIN en el body) =====
   const loadOrders = async (p, silent = false) => {
-  try {
-    if (!silent) setLoading(true);
+    try {
+      if (!silent) setLoading(true);
 
-    const pinSanitized = (p || "").trim();
+      const pinSanitized = (p || "").trim();
 
-    const res = await axios.post(
-      `${API_BASE}/api/orders-admin`,
-      {},
-      {
-        headers: {
-          "x-admin-pin": pinSanitized,
-        },
-      }
-    );
-
-    setOrders(Array.isArray(res.data) ? res.data : []);
-    setAuthed(true);
-  } catch (err) {
-    console.error(err);
-    if (!silent) {
-      Swal.fire(
-        "Error",
-        "PIN inválido o servidor no disponible",
-        "error"
+      const res = await axios.post(
+        `${API_BASE}/api/orders-admin`,
+        { pin: pinSanitized }, // 👈 AQUÍ VA EL PIN EN EL BODY
+        {
+          headers: {
+            "Content-Type": "application/json",
+            // Opcionalmente también podrías mandar el header:
+            // "x-admin-pin": pinSanitized,
+          },
+        }
       );
+
+      setOrders(Array.isArray(res.data) ? res.data : []);
+      setAuthed(true);
+    } catch (err) {
+      console.error(err);
+      if (!silent) {
+        Swal.fire(
+          "Error",
+          "PIN inválido o servidor no disponible",
+          "error"
+        );
+      }
+      setAuthed(false);
+    } finally {
+      if (!silent) setLoading(false);
     }
-    setAuthed(false);
-  } finally {
-    if (!silent) setLoading(false);
-  }
-};
+  };
 
   const handleLogin = async () => {
     if (!pin.trim()) {
@@ -151,14 +153,14 @@ function AdminPage() {
 
     try {
       const res = await axios.put(
-  `${API_BASE}/api/orders/${id}/estado`,
-  { estado },
-  {
-    headers: {
-      "x-admin-pin": pin.trim(),
-    },
-  }
-);
+        `${API_BASE}/api/orders/${id}/estado`,
+        { estado },
+        {
+          headers: {
+            "x-admin-pin": pin.trim(), // 👈 aquí sí usamos el header, como espera el backend
+          },
+        }
+      );
 
       if (res.data.ok) {
         Swal.fire({
@@ -262,15 +264,12 @@ function AdminPage() {
   const filteredOrders = useMemo(() => {
     let list = [...orders];
 
-    // Filtro por estado
     if (statusFilter !== "all") {
       list = list.filter((o) => o.estado === statusFilter);
     }
 
-    // Filtro por fecha
     list = list.filter((o) => isInDateFilter(o));
 
-    // Filtro de búsqueda
     if (searchTerm.trim()) {
       const q = searchTerm.trim().toLowerCase();
       list = list.filter((o) => {
@@ -289,7 +288,6 @@ function AdminPage() {
       });
     }
 
-    // Ordenar por fecha descendente (más nuevas primero)
     list.sort((a, b) => {
       const da = new Date(a.creada_en || a.actualizada_en || 0).getTime();
       const db = new Date(b.creada_en || b.actualizada_en || 0).getTime();
@@ -299,7 +297,6 @@ function AdminPage() {
     return list;
   }, [orders, statusFilter, dateFilter, searchTerm]);
 
-  // Agrupar por día y luego por estado
   const groupedByDay = useMemo(() => {
     const map = {};
 
@@ -319,14 +316,12 @@ function AdminPage() {
 
     const groups = Object.values(map);
 
-    // Ordenar días (más recientes primero)
     groups.sort((a, b) => {
       const da = new Date(a.orders[0]?.creada_en || 0).getTime();
       const db = new Date(b.orders[0]?.creada_en || 0).getTime();
       return db - da;
     });
 
-    // Dentro de cada día agrupar por estado
     return groups.map((g) => {
       const byStatus = {};
       g.orders.forEach((o) => {
@@ -426,8 +421,8 @@ function AdminPage() {
           </div>
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
-  🔐 Acceso operador activo
-</span>
+              🔐 Acceso operador activo
+            </span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
               🔄 Auto-refresh:
               <select
@@ -629,7 +624,7 @@ function AdminPage() {
                                   </span>
                                 </p>
 
-                                {/* BLOQUE BANCO + CUENTA (GRANDE) */}
+                                {/* BLOQUE BANCO + CUENTA */}
                                 <div className="mt-2 bg-slate-950/60 border border-indigo-500/50 rounded-xl px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                   <div className="text-xs text-slate-200">
                                     <p className="font-semibold text-indigo-300 text-[11px] uppercase tracking-wide">
@@ -701,7 +696,6 @@ function AdminPage() {
 
                               {/* ESTADO + ACCIONES */}
                               <div className="flex flex-col items-end gap-2 mt-1 md:mt-0 md:w-64">
-                                {/* Badge de estado */}
                                 <span
                                   className={`px-3 py-1 border text-[11px] rounded-full font-semibold ${
                                     STATUS_META[o.estado]?.colorBadge ||
@@ -712,7 +706,6 @@ function AdminPage() {
                                     o.estado.toUpperCase()}
                                 </span>
 
-                                {/* Botones de siguiente estado (más grandes) */}
                                 <div className="flex flex-wrap gap-2 justify-end">
                                   {getNextStates(o.estado).map(
                                     (estadoSig) => {
