@@ -183,96 +183,108 @@ function App() {
     );
   };
 
-  // ========= ETAPA 1: CONFIRMAR MONTO =========
-  const handleStep1 = async () => {
-    if (!montoWLD || Number(montoWLD) <= 0) {
-      Swal.fire("Monto inválido", "Ingresa un valor válido en WLD.", "warning");
-      return;
-    }
+  // ========= ETAPA 1: CONFIRMAR MONTO (solo validación) =========
+const handleStep1 = async () => {
+  if (!montoWLD || Number(montoWLD) <= 0) {
+    Swal.fire("Monto inválido", "Ingresa un valor válido en WLD.", "warning");
+    return;
+  }
 
-    if (!isVerified || !verificationNullifier) {
-      Swal.fire(
-        "Verificación requerida",
-        "Debes verificar tu identidad con World ID antes de continuar.",
-        "warning"
-      );
-      return;
-    }
+  if (!isVerified || !verificationNullifier) {
+    Swal.fire(
+      "Verificación requerida",
+      "Debes verificar tu identidad con World ID antes de continuar.",
+      "warning"
+    );
+    return;
+  }
 
-    const txId = await sendWldToDestination(montoWLD);
-    if (!txId) return;
-
-    lastTxIdRef.current = txId;
-    setStep(2);
-  };
+  // ✅ Ya no se envían WLD aquí.
+  // Solo avanzamos al paso 2 para que el usuario ingrese sus datos bancarios.
+  setStep(2);
+};
 
   // ========= ETAPA 2: CONFIRMAR DATOS BANCARIOS Y CREAR ORDEN =========
-  const handleStep2 = async () => {
-    if (!bankData.banco || !bankData.titular || !bankData.numero) {
-      Swal.fire("Campos incompletos", "Llena todos los campos.", "warning");
-      return;
-    }
+  // ========= ETAPA 2: ENVIAR WLD + CREAR ORDEN =========
+const handleStep2 = async () => {
+  if (!bankData.banco || !bankData.titular || !bankData.numero) {
+    Swal.fire("Campos incompletos", "Llena todos los campos.", "warning");
+    return;
+  }
 
-    if (!verificationNullifier || !isVerified) {
-      Swal.fire(
-        "Error",
-        "No se detectó la verificación World ID. Intenta nuevamente.",
-        "error"
-      );
-      return;
-    }
+  if (!verificationNullifier || !isVerified) {
+    Swal.fire(
+      "Error",
+      "No se detectó la verificación World ID. Intenta nuevamente.",
+      "error"
+    );
+    return;
+  }
 
-    if (!rate || !rate.wld_cop_usuario) {
-      Swal.fire(
-        "Tasa no disponible",
-        "No se pudo leer la tasa actual. Intenta crear la orden de nuevo.",
-        "error"
-      );
-      return;
-    }
+  if (!rate || !rate.wld_cop_usuario) {
+    Swal.fire(
+      "Tasa no disponible",
+      "No se pudo leer la tasa actual. Intenta crear la orden de nuevo.",
+      "error"
+    );
+    return;
+  }
 
-    Swal.fire({
-      title: "Creando orden...",
-      text: "Por favor espera un momento.",
-      allowOutsideClick: false,
-      didOpen: () => Swal.showLoading(),
+  // 1️⃣ Primero enviamos los WLD al wallet destino
+  const txId = await sendWldToDestination(montoWLD);
+  if (!txId) {
+    // Si la transacción falla o el usuario cancela, NO creamos la orden
+    return;
+  }
+
+  // Guardamos el id interno de la transacción para ligarlo a la orden
+  lastTxIdRef.current = txId;
+
+  // 2️⃣ Ahora sí, creamos la orden en el backend
+  Swal.fire({
+    title: "Creando orden...",
+    text: "Por favor espera un momento.",
+    allowOutsideClick: false,
+    didOpen: () => Swal.showLoading(),
+  });
+
+  const montoCOP = Number(montoWLD) * Number(rate?.wld_cop_usuario || 0);
+
+  try {
+    const res = await axios.post(`${API_BASE}/api/orders`, {
+      nombre: bankData.titular,
+      correo: "no-email@changewld.com",
+      banco: bankData.banco,
+      titular: bankData.titular,
+      numero: bankData.numero,
+      montoWLD: Number(montoWLD),
+      montoCOP: Number(montoCOP.toFixed(2)),
+      verified: isVerified,
+      nullifier: verificationNullifier,
+      // Guardamos el id interno de la tx de World App
+      wld_tx_id: lastTxIdRef.current || txId,
     });
 
-    const montoCOP = Number(montoWLD) * Number(rate?.wld_cop_usuario || 0);
+    Swal.close();
 
-    try {
-      const res = await axios.post(`${API_BASE}/api/orders`, {
-        nombre: bankData.titular,
-        correo: "no-email@changewld.com",
-        banco: bankData.banco,
-        titular: bankData.titular,
-        numero: bankData.numero,
-        montoWLD: Number(montoWLD),
-        montoCOP: Number(montoCOP.toFixed(2)),
-        verified: isVerified,
-        nullifier: verificationNullifier,
-        wld_tx_id: lastTxIdRef.current || null,
-      });
-
-      Swal.close();
-
-      if (res.data?.ok) {
-        setOrderId(res.data.orden.id);
-        setOrderInfo(res.data.orden);
-        setStep(3);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      } else {
-        Swal.fire(
-          "Error",
-          res.data?.error || "No se pudo crear la orden.",
-          "error"
-        );
-      }
-    } catch (err) {
-      Swal.close();
-      Swal.fire("Error", "No se pudo conectar con el servidor.", "error");
+    if (res.data?.ok) {
+      setOrderId(res.data.orden.id);
+      setOrderInfo(res.data.orden);
+      setStep(3);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else {
+      Swal.fire(
+        "Error",
+        res.data?.error || "No se pudo crear la orden.",
+        "error"
+      );
     }
-  };
+  } catch (err) {
+    Swal.close();
+    Swal.fire("Error", "No se pudo conectar con el servidor.", "error");
+  }
+};
+
 
   // ========= FORMATEADOR =========
   const formatCOP = (n) =>
