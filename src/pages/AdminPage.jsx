@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 function AdminPage() {
   const [pin, setPin] = useState("");
+  const [token, setToken] = useState("");
   const [orders, setOrders] = useState([]);
   const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -85,24 +86,21 @@ function AdminPage() {
     }
   };
 
-  // ===== CARGAR ÓRDENES (POST con PIN en el body) =====
-  const loadOrders = async (p, silent = false) => {
+  // ===== CARGAR ÓRDENES (usa JWT en Authorization) =====
+  const loadOrders = async (silent = false, customToken) => {
     try {
       if (!silent) setLoading(true);
 
-      const pinSanitized = (p || "").trim();
+      const authToken = customToken || token;
+      if (!authToken) {
+        throw new Error("Sin token de admin");
+      }
 
-      const res = await axios.post(
-        `${API_BASE}/api/orders-admin`,
-        { pin: pinSanitized }, // 👈 AQUÍ VA EL PIN EN EL BODY
-        {
-          headers: {
-            "Content-Type": "application/json",
-            // Opcionalmente también podrías mandar el header:
-            // "x-admin-pin": pinSanitized,
-          },
-        }
-      );
+      const res = await axios.get(`${API_BASE}/api/orders-admin`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
 
       setOrders(Array.isArray(res.data) ? res.data : []);
       setAuthed(true);
@@ -111,7 +109,7 @@ function AdminPage() {
       if (!silent) {
         Swal.fire(
           "Error",
-          "PIN inválido o servidor no disponible",
+          "PIN o sesión inválida, o servidor no disponible",
           "error"
         );
       }
@@ -121,13 +119,59 @@ function AdminPage() {
     }
   };
 
+  // ===== LOGIN: pedir PIN, recibir JWT =====
   const handleLogin = async () => {
     if (!pin.trim()) {
       Swal.fire("PIN requerido", "Ingresa el PIN del operador.", "warning");
       return;
     }
-    await loadOrders(pin.trim());
+
+    try {
+      setLoading(true);
+
+      const res = await axios.post(`${API_BASE}/api/admin/login`, {
+        pin: pin.trim(),
+      });
+
+      if (!res.data?.ok || !res.data?.token) {
+        throw new Error(res.data?.error || "Respuesta inválida del servidor");
+      }
+
+      const tok = res.data.token;
+      setToken(tok);
+      localStorage.setItem("changewld_admin_token", tok);
+      setAuthed(true);
+
+      await loadOrders(true, tok);
+    } catch (err) {
+      console.error("Error en login admin:", err);
+      Swal.fire(
+        "Error",
+        "PIN inválido o servidor no disponible.",
+        "error"
+      );
+      setAuthed(false);
+      setToken("");
+      localStorage.removeItem("changewld_admin_token");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // ===== AUTO-LOGIN SI HAY TOKEN GUARDADO =====
+  useEffect(() => {
+    const stored = localStorage.getItem("changewld_admin_token");
+    if (!stored) return;
+
+    setToken(stored);
+    loadOrders(true, stored).catch(() => {
+      // si falla, limpiamos sesión
+      setAuthed(false);
+      setToken("");
+      localStorage.removeItem("changewld_admin_token");
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ===== CAMBIO DE ESTADO =====
   const handleChangeEstado = async (id, estado) => {
@@ -157,7 +201,7 @@ function AdminPage() {
         { estado },
         {
           headers: {
-            "x-admin-pin": pin.trim(), // 👈 aquí sí usamos el header, como espera el backend
+            Authorization: `Bearer ${token}`,
           },
         }
       );
@@ -170,7 +214,7 @@ function AdminPage() {
           timer: 1300,
           showConfirmButton: false,
         });
-        await loadOrders(pin, true); // recarga silenciosa
+        await loadOrders(true);
       } else {
         Swal.fire(
           "Error",
@@ -190,14 +234,14 @@ function AdminPage() {
 
   // ===== AUTO-REFRESH =====
   useEffect(() => {
-    if (!authed || !pin) return;
+    if (!authed || !token) return;
 
     const interval = setInterval(() => {
-      loadOrders(pin, true);
+      loadOrders(true);
     }, autoRefreshMs);
 
     return () => clearInterval(interval);
-  }, [authed, pin, autoRefreshMs]);
+  }, [authed, token, autoRefreshMs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ===== FORMATEADORES =====
   const formatDateTime = (iso) => {
@@ -391,13 +435,14 @@ function AdminPage() {
           />
           <button
             onClick={handleLogin}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-all text-sm"
+            disabled={loading}
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition-all text-sm disabled:opacity-60"
           >
-            Entrar al panel
+            {loading ? "Entrando..." : "Entrar al panel"}
           </button>
           <p className="text-[11px] text-slate-500 text-center mt-4">
             Cambia el PIN desde tu archivo <code>.env</code> del backend
-            (<code>OPERATOR_PIN</code>).
+            (<code>OPERATOR_PIN</code>). El acceso se protege con un token JWT.
           </p>
         </motion.div>
       </div>
@@ -421,7 +466,7 @@ function AdminPage() {
           </div>
           <div className="flex flex-wrap gap-3 items-center justify-end text-xs md:text-sm">
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
-              🔐 Acceso operador activo
+              🔐 Sesión admin activa
             </span>
             <span className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 flex items-center gap-2">
               🔄 Auto-refresh:
@@ -523,7 +568,7 @@ function AdminPage() {
             </select>
 
             <button
-              onClick={() => loadOrders(pin, false)}
+              onClick={() => loadOrders(false)}
               className="bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl px-3 py-2 text-slate-200 flex items-center gap-1"
             >
               🔄 Actualizar
@@ -603,7 +648,6 @@ function AdminPage() {
                             >
                               {/* INFO IZQUIERDA */}
                               <div className="flex-1 min-w-0">
-                                {/* ID + nombre */}
                                 <div className="flex items-center gap-2 mb-1 flex-wrap">
                                   <span className="text-xs text-slate-500">
                                     #{o.id}
@@ -613,7 +657,6 @@ function AdminPage() {
                                   </span>
                                 </div>
 
-                                {/* Monto */}
                                 <p className="text-xs text-slate-400 mb-1">
                                   {o.montoWLD} WLD →{" "}
                                   <span className="font-semibold text-indigo-300">
@@ -624,7 +667,6 @@ function AdminPage() {
                                   </span>
                                 </p>
 
-                                {/* BLOQUE BANCO + CUENTA */}
                                 <div className="mt-2 bg-slate-950/60 border border-indigo-500/50 rounded-xl px-3 py-2 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                                   <div className="text-xs text-slate-200">
                                     <p className="font-semibold text-indigo-300 text-[11px] uppercase tracking-wide">
@@ -659,7 +701,6 @@ function AdminPage() {
                                   </div>
                                 </div>
 
-                                {/* FECHAS + WORLD ID + TX */}
                                 <div className="mt-2 space-y-0.5">
                                   <p className="text-[11px] text-slate-500">
                                     Creada: {formatDateTime(o.creada_en)}{" "}
