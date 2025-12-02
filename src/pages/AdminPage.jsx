@@ -87,37 +87,45 @@ function AdminPage() {
   };
 
   // ===== CARGAR ÓRDENES (usa JWT en Authorization) =====
-  const loadOrders = async (silent = false, customToken) => {
-    try {
-      if (!silent) setLoading(true);
+const loadOrders = async (silent = false, customToken) => {
+  try {
+    if (!silent) setLoading(true);
 
-      const authToken = customToken || token;
-      if (!authToken) {
-        throw new Error("Sin token de admin");
-      }
-
-      const res = await axios.get(`${API_BASE}/api/orders-admin`, {
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-
-      setOrders(Array.isArray(res.data) ? res.data : []);
-      setAuthed(true);
-    } catch (err) {
-      console.error(err);
-      if (!silent) {
-        Swal.fire(
-          "Error",
-          "PIN o sesión inválida, o servidor no disponible",
-          "error"
-        );
-      }
-      setAuthed(false);
-    } finally {
-      if (!silent) setLoading(false);
+    const authToken = customToken || token;
+    if (!authToken) {
+      throw new Error("Sin token de admin");
     }
-  };
+
+    const res = await axios.get(`${API_BASE}/api/orders-admin`, {
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    });
+
+    setOrders(Array.isArray(res.data) ? res.data : []);
+    setAuthed(true);
+  } catch (err) {
+    console.error(err);
+
+    // 👉 si hay error 401/403 limpiamos la sesión completa
+    if (err.response && [401, 403].includes(err.response.status)) {
+      setAuthed(false);
+      setToken("");
+      localStorage.removeItem("changewld_admin_token");
+    }
+
+    if (!silent) {
+      Swal.fire(
+        "Error",
+        "Sesión inválida o servidor no disponible",
+        "error"
+      );
+    }
+  } finally {
+    if (!silent) setLoading(false);
+  }
+};
+
 
   // ===== LOGIN: pedir PIN, recibir JWT =====
   const handleLogin = async () => {
