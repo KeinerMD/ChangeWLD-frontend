@@ -4,22 +4,16 @@ import Swal from "sweetalert2";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { API_BASE } from "../apiConfig";
 
+/**
+ * nullifier: lo recibes desde App.jsx pero aquí no lo necesitamos por ahora.
+ * onWalletLinked: callback que espera un objeto { wallet, balanceWLD }
+ */
 export default function ConnectWallet({ nullifier, onWalletLinked }) {
   const [connecting, setConnecting] = useState(false);
   const [walletAddress, setWalletAddress] = useState(null);
-  const [balance, setBalance] = useState(null);
 
   const handleConnect = async () => {
     try {
-      if (!nullifier) {
-        await Swal.fire(
-          "Primero verifica tu identidad",
-          "Debes completar la verificación con World ID antes de vincular tu billetera.",
-          "warning"
-        );
-        return;
-      }
-
       if (!MiniKit.isInstalled()) {
         await Swal.fire(
           "Abre ChangeWLD desde World App",
@@ -35,13 +29,13 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
       const nonceRes = await fetch(`${API_BASE}/api/wallet-auth/nonce`);
       const nonceData = await nonceRes.json();
 
-      if (!nonceData.ok) {
-        throw new Error(nonceData.error || "No se pudo obtener nonce");
+      if (!nonceRes.ok || !nonceData.ok) {
+        throw new Error(nonceData.error || "No se pudo obtener el nonce.");
       }
 
       const { nonce, signedNonce } = nonceData;
 
-      // 2️⃣ Ejecutamos walletAuth en la World App (SIWE)
+      // 2️⃣ Ejecutamos walletAuth en World App (SIWE)
       const { finalPayload } = await MiniKit.commandsAsync.walletAuth({
         nonce,
         statement: "Inicias sesión en ChangeWLD con tu billetera World App",
@@ -57,8 +51,8 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
         return;
       }
 
-      // 3️⃣ Verificamos SIWE en el backend
-      const authResp = await fetch(`${API_BASE}/api/wallet-auth/complete`, {
+      // 3️⃣ Enviamos todo al backend para verificar SIWE
+      const resp = await fetch(`${API_BASE}/api/wallet-auth/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -68,49 +62,54 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
         }),
       });
 
-      const authData = await authResp.json();
+      const data = await resp.json();
 
-      if (!authResp.ok || !authData.ok) {
-        throw new Error(authData.error || "El backend rechazó la autenticación");
+      if (!resp.ok || !data.ok || !data.walletAddress) {
+        throw new Error(data.error || "El backend rechazó la autenticación.");
       }
 
-      const address = authData.walletAddress;
-      const { message, signature } = finalPayload;
+      const address = data.walletAddress;
+      setWalletAddress(address);
 
-      // opcional: guardar token si luego quieres auth de rutas
-      if (authData.walletToken) {
-        localStorage.setItem("changewld_wallet_token", authData.walletToken);
+      // Opcional: guardar token de sesión de esa wallet
+      if (data.walletToken) {
+        localStorage.setItem("changewld_wallet_token", data.walletToken);
       }
 
-      // 4️⃣ Vinculamos la wallet al nullifier y obtenemos balance
-      const linkResp = await fetch(`${API_BASE}/api/wallet/link`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nullifier,
-          address,
-          message,
-          signature,
-        }),
-      });
+      // 4️⃣ Leer balance real de WLD en World Chain desde el backend
+      let balanceWLD = null;
+      try {
+        const balRes = await fetch(
+          `${API_BASE}/api/wallet-balance?address=${encodeURIComponent(
+            address
+          )}`
+        );
+        const balData = await balRes.json();
 
-      const linkData = await linkResp.json();
-
-      if (!linkResp.ok || !linkData.ok) {
-        throw new Error(linkData.error || "No se pudo vincular la billetera.");
+        if (balRes.ok && balData.ok) {
+          balanceWLD = balData.balanceWLD ?? null;
+        }
+      } catch (err) {
+        console.warn("No se pudo obtener el balance WLD:", err);
       }
 
-      setWalletAddress(linkData.wallet);
-      setBalance(linkData.balanceWLD ?? 0);
+      // 5️⃣ Avisamos al padre (App.jsx) para que habilite el botón MAX
+      if (typeof onWalletLinked === "function") {
+        onWalletLinked({
+          wallet: address,
+          balanceWLD,
+        });
+      }
 
-      onWalletLinked?.({
-        wallet: linkData.wallet,
-        balanceWLD: linkData.balanceWLD ?? 0,
-      });
+      // 6️⃣ Mensaje final al usuario
+      const saldoTexto =
+        balanceWLD != null
+          ? `\n\nSaldo estimado: ${balanceWLD.toFixed(4)} WLD`
+          : "";
 
       await Swal.fire(
         "Billetera conectada",
-        `Tu dirección es:\n${address}`,
+        `Tu dirección es:\n${address}${saldoTexto}`,
         "success"
       );
     } catch (err) {
@@ -145,19 +144,9 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
       </button>
 
       {walletAddress && (
-        <>
-          <p className="mt-1 text-[11px] text-gray-400 break-all text-center">
-            {walletAddress}
-          </p>
-          {balance != null && (
-            <p className="mt-1 text-[11px] text-gray-500 text-center">
-              Saldo detectado:{" "}
-              <span className="font-semibold">
-                {balance.toFixed ? balance.toFixed(4) : balance} WLD
-              </span>
-            </p>
-          )}
-        </>
+        <p className="mt-1 text-[11px] text-gray-400 break-all text-center">
+          {walletAddress}
+        </p>
       )}
     </div>
   );
