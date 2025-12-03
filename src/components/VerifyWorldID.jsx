@@ -1,117 +1,75 @@
 // src/components/VerifyWorldID.jsx
 import React, { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import axios from "axios";
 import { MiniKit } from "@worldcoin/minikit-js";
-import { API_BASE } from "../apiConfig";
 
 export default function VerifyWorldID({ onVerified }) {
-  const [status, setStatus] = useState("idle"); // idle | verifying | ok | error
+  const [status, setStatus] = useState("pending"); // 'pending' | 'ok' | 'error'
+  const [error, setError] = useState("");
 
   useEffect(() => {
     const runVerification = async () => {
-      if (status !== "idle") return;
-
-      if (!MiniKit.isInstalled()) {
-        setStatus("error");
-        await Swal.fire(
-          "Abre ChangeWLD desde World App",
-          "La verificación con World ID solo funciona dentro de la World App.",
-          "warning"
-        );
-        return;
-      }
-
       try {
-        setStatus("verifying");
+        setStatus("pending");
+        setError("");
 
-        const action = "verify-changewld-v2";
-        const signal = "changewld-device";
-
-        // 1️⃣ Mandar comando de verificación a World App
+        // ⛔️ OJO: SIN MiniKit.isInstalled()
         const { finalPayload } = await MiniKit.commandsAsync.verify({
-          action,
-          signal,
+          action: "verify-changewld-v2",
+          signal: "changewld-device",
         });
 
         if (!finalPayload || finalPayload.status === "error") {
           setStatus("error");
-          await Swal.fire(
-            "Verificación cancelada",
-            "No se completó la verificación de World ID.",
-            "error"
+          setError(
+            "No se pudo verificar tu World ID. Cierra y vuelve a abrir ChangeWLD."
           );
           return;
         }
 
-        // 2️⃣ Validar proof en tu backend
-        const resp = await axios.post(`${API_BASE}/api/verify-world-id`, {
-          payload: finalPayload,
-          action,
-          signal,
-        });
-
-        if (!resp.data?.success) {
+        const nullifier = finalPayload.nullifier_hash;
+        if (!nullifier) {
           setStatus("error");
-          await Swal.fire(
-            "Verificación rechazada",
-            "World ID no pudo validar tu prueba. Intenta más tarde.",
-            "error"
-          );
+          setError("Respuesta inválida de World ID.");
           return;
         }
 
-        // 3️⃣ Extraer nullifier y avisar al padre (App.jsx)
-        const nullifier =
-          finalPayload.nullifier_hash ||
-          finalPayload.nullifierHash ||
-          resp.data?.verifyRes?.nullifier_hash;
-
-        if (nullifier) {
-          setStatus("ok");
-          onVerified?.(nullifier);
-        } else {
-          setStatus("error");
-          await Swal.fire(
-            "Error",
-            "No se pudo obtener el identificador de World ID.",
-            "error"
-          );
-        }
+        // ✅ Avisamos al padre (App.jsx)
+        onVerified?.(nullifier);
+        setStatus("ok");
       } catch (err) {
         console.error("Error en VerifyWorldID:", err);
         setStatus("error");
-        await Swal.fire(
-          "Error",
-          err?.message || "No se pudo verificar tu World ID.",
-          "error"
+        setError(
+          "No se pudo verificar tu World ID. Cierra y vuelve a abrir ChangeWLD."
         );
       }
     };
 
-    // Se lanza automáticamente al montar el componente
+    // 🔁 Se ejecuta automáticamente al abrir la mini app
     runVerification();
-  }, [status, onVerified]);
+  }, [onVerified]);
 
-  // Solo texto de estado, SIN botones
   return (
-    <div className="mt-2 text-xs text-center">
-      {status === "verifying" && (
-        <span className="text-indigo-600 font-semibold">
-          Conectando tu World ID...
-        </span>
-      )}
-      {status === "ok" && (
-        <span className="text-emerald-600 font-semibold">
-          ✔ World ID verificado
-        </span>
-      )}
-      {status === "error" && (
-        <span className="text-red-500">
-          No se pudo verificar tu World ID. Cierra y vuelve a abrir ChangeWLD.
-        </span>
+    <div className="mt-3 text-center text-xs">
+      <p className="text-gray-600">
+        Estado verificación:{" "}
+        {status === "ok" ? (
+          <span className="text-emerald-600 font-semibold">✔ Verificado</span>
+        ) : status === "pending" ? (
+          <span className="text-orange-500 font-semibold">
+            ⏳ Verificando...
+          </span>
+        ) : (
+          <span className="text-red-500 font-semibold">✖ Pendiente</span>
+        )}
+      </p>
+
+      {error && (
+        <p className="mt-1 text-[11px] text-red-500">
+          {error}
+        </p>
       )}
     </div>
   );
 }
-
