@@ -1,18 +1,15 @@
 // src/components/ConnectWallet.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Swal from "sweetalert2";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { API_BASE } from "../apiConfig";
 
-/**
- * nullifier: lo recibes desde App.jsx pero aquí no lo necesitamos por ahora.
- * onWalletLinked: callback que espera un objeto { wallet, balanceWLD }
- */
 export default function ConnectWallet({ nullifier, onWalletLinked }) {
   const [connecting, setConnecting] = useState(false);
   const [walletAddress, setWalletAddress] = useState(null);
+  const [triedOnce, setTriedOnce] = useState(false);
 
-  const handleConnect = async () => {
+  const connectWallet = async () => {
     try {
       if (!MiniKit.isInstalled()) {
         await Swal.fire(
@@ -25,7 +22,7 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
 
       setConnecting(true);
 
-      // 1️⃣ Pedimos nonce + signedNonce a tu backend
+      // 1️⃣ Pedimos nonce + signedNonce al backend
       const nonceRes = await fetch(`${API_BASE}/api/wallet-auth/nonce`);
       const nonceData = await nonceRes.json();
 
@@ -47,7 +44,6 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
           "No se completó la firma en tu billetera.",
           "error"
         );
-        setConnecting(false);
         return;
       }
 
@@ -71,12 +67,11 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
       const address = data.walletAddress;
       setWalletAddress(address);
 
-      // Opcional: guardar token de sesión de esa wallet
       if (data.walletToken) {
         localStorage.setItem("changewld_wallet_token", data.walletToken);
       }
 
-      // 4️⃣ Leer balance real de WLD en World Chain desde el backend
+      // 4️⃣ Obtener balance real de WLD en World Chain desde el backend
       let balanceWLD = null;
       try {
         const balRes = await fetch(
@@ -93,7 +88,7 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
         console.warn("No se pudo obtener el balance WLD:", err);
       }
 
-      // 5️⃣ Avisamos al padre (App.jsx) para que habilite el botón MAX
+      // 5️⃣ Avisar al padre para que funcione el botón MAX
       if (typeof onWalletLinked === "function") {
         onWalletLinked({
           wallet: address,
@@ -101,7 +96,6 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
         });
       }
 
-      // 6️⃣ Mensaje final al usuario
       const saldoTexto =
         balanceWLD != null
           ? `\n\nSaldo estimado: ${balanceWLD.toFixed(4)} WLD`
@@ -124,29 +118,36 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
     }
   };
 
-  return (
-    <div className="mt-4">
-      <button
-        type="button"
-        onClick={handleConnect}
-        disabled={connecting}
-        className={`w-full py-2 rounded-xl border text-sm font-semibold ${
-          walletAddress
-            ? "border-emerald-400 text-emerald-600 bg-emerald-50"
-            : "border-indigo-200 text-indigo-600 bg-white"
-        }`}
-      >
-        {connecting
-          ? "Conectando billetera..."
-          : walletAddress
-          ? "Billetera conectada ✔"
-          : "Conectar billetera para usar MAX 🔗"}
-      </button>
+  // 🔄 Se lanza automáticamente una vez al montar el componente
+  useEffect(() => {
+    if (!triedOnce && !walletAddress) {
+      setTriedOnce(true);
+      connectWallet();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triedOnce, walletAddress]);
 
-      {walletAddress && (
-        <p className="mt-1 text-[11px] text-gray-400 break-all text-center">
-          {walletAddress}
-        </p>
+  // Solo texto de estado, SIN botones
+  const short =
+    walletAddress && `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
+
+  return (
+    <div className="mt-2 text-xs text-center">
+      {connecting && (
+        <span className="text-indigo-600 font-semibold">
+          Conectando tu billetera...
+        </span>
+      )}
+      {!connecting && walletAddress && (
+        <span className="text-emerald-600 font-semibold">
+          ✔ Billetera conectada:{" "}
+          <span className="font-mono text-[11px]">{short}</span>
+        </span>
+      )}
+      {!connecting && !walletAddress && triedOnce && (
+        <span className="text-red-500">
+          No se pudo conectar la billetera. Cierra y vuelve a abrir ChangeWLD.
+        </span>
       )}
     </div>
   );

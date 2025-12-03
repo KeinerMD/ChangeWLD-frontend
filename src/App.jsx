@@ -471,41 +471,21 @@ function App() {
               </div>
 
               <div className="mt-5">
-                <VerifyWorldID onVerified={handleWorldIdVerified} />
+  {/* World ID se verifica automáticamente al montar */}
+  <VerifyWorldID onVerified={handleWorldIdVerified} />
+</div>
 
-                <p className="mt-2 text-xs text-center">
-                  Estado verificación:{" "}
-                  {isVerified ? (
-                    <span className="text-emerald-600 font-semibold">
-                      ✔ Verificado
-                    </span>
-                  ) : (
-                    <span className="text-red-500 font-semibold">
-                      ✖ Pendiente
-                    </span>
-                  )}
-                </p>
-              </div>
+<div className="mt-3">
+  {/* La billetera se conecta automáticamente al montar */}
+  <ConnectWallet
+    nullifier={verificationNullifier}
+    onWalletLinked={({ wallet, balanceWLD }) => {
+      setWalletAddress(wallet);
+      setAvailableBalance(balanceWLD);
+    }}
+  />
+</div>
 
-              <div className="mt-3">
-                <ConnectWallet
-                  nullifier={verificationNullifier}
-                  onWalletLinked={({ wallet, balanceWLD }) => {
-                    setWalletAddress(wallet);
-                    setAvailableBalance(balanceWLD);
-                  }}
-                />
-                <p className="mt-2 text-xs text-center text-gray-500">
-                  Billetera:{" "}
-                  {walletAddress ? (
-                    <span className="font-mono text-[11px] text-indigo-700">
-                      {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-                    </span>
-                  ) : (
-                    <span className="text-red-500">No conectada</span>
-                  )}
-                </p>
-              </div>
 
               <button
                 onClick={handleStep1}

@@ -1,101 +1,117 @@
-import React from "react";
+// src/components/VerifyWorldID.jsx
+import React, { useEffect, useState } from "react";
 import Swal from "sweetalert2";
+import axios from "axios";
+import { MiniKit } from "@worldcoin/minikit-js";
 import { API_BASE } from "../apiConfig";
-import { MiniKit, VerificationLevel } from "@worldcoin/minikit-js";
 
 export default function VerifyWorldID({ onVerified }) {
-  const handleVerify = async () => {
-    try {
+  const [status, setStatus] = useState("idle"); // idle | verifying | ok | error
+
+  useEffect(() => {
+    const runVerification = async () => {
+      if (status !== "idle") return;
+
       if (!MiniKit.isInstalled()) {
+        setStatus("error");
         await Swal.fire(
           "Abre ChangeWLD desde World App",
-          "La verificación solo funciona dentro de la World App (Mini apps → ChangeWLD).",
+          "La verificación con World ID solo funciona dentro de la World App.",
           "warning"
         );
         return;
       }
 
-      const verifyPayload = {
-        action: "verify-changewld-v2",
-        signal: "changewld-device",
-        verification_level: VerificationLevel.Device,
-      };
-
-      const { finalPayload } = await MiniKit.commandsAsync.verify(verifyPayload);
-
-      if (!finalPayload || finalPayload.status === "error") {
-        await Swal.fire(
-          "Verificación rechazada",
-          "World App no pudo completar la verificación. Intenta de nuevo.",
-          "error"
-        );
-        return;
-      }
-
-      const url = `${API_BASE}/api/verify-world-id`;
-
-      let resp;
       try {
-        resp = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            payload: finalPayload,      // ✅ aquí sin TypeScript
-            action: verifyPayload.action,
-            signal: verifyPayload.signal,
-          }),
+        setStatus("verifying");
+
+        const action = "verify-changewld-v2";
+        const signal = "changewld-device";
+
+        // 1️⃣ Mandar comando de verificación a World App
+        const { finalPayload } = await MiniKit.commandsAsync.verify({
+          action,
+          signal,
         });
-      } catch (networkErr) {
+
+        if (!finalPayload || finalPayload.status === "error") {
+          setStatus("error");
+          await Swal.fire(
+            "Verificación cancelada",
+            "No se completó la verificación de World ID.",
+            "error"
+          );
+          return;
+        }
+
+        // 2️⃣ Validar proof en tu backend
+        const resp = await axios.post(`${API_BASE}/api/verify-world-id`, {
+          payload: finalPayload,
+          action,
+          signal,
+        });
+
+        if (!resp.data?.success) {
+          setStatus("error");
+          await Swal.fire(
+            "Verificación rechazada",
+            "World ID no pudo validar tu prueba. Intenta más tarde.",
+            "error"
+          );
+          return;
+        }
+
+        // 3️⃣ Extraer nullifier y avisar al padre (App.jsx)
+        const nullifier =
+          finalPayload.nullifier_hash ||
+          finalPayload.nullifierHash ||
+          resp.data?.verifyRes?.nullifier_hash;
+
+        if (nullifier) {
+          setStatus("ok");
+          onVerified?.(nullifier);
+        } else {
+          setStatus("error");
+          await Swal.fire(
+            "Error",
+            "No se pudo obtener el identificador de World ID.",
+            "error"
+          );
+        }
+      } catch (err) {
+        console.error("Error en VerifyWorldID:", err);
+        setStatus("error");
         await Swal.fire(
           "Error",
-          `No se pudo conectar con el servidor.\n\nDetalle: ${
-            networkErr?.message || String(networkErr)
-          }`,
+          err?.message || "No se pudo verificar tu World ID.",
           "error"
         );
-        return;
       }
+    };
 
-      const data = await resp.json().catch(async (parseErr) => {
-        console.error("No se pudo parsear JSON:", parseErr);
-        throw parseErr;
-      });
+    // Se lanza automáticamente al montar el componente
+    runVerification();
+  }, [status, onVerified]);
 
-      if (!resp.ok || !data?.success) {
-        await Swal.fire(
-          "Verificación rechazada",
-          "El servidor no aceptó la prueba de World ID.",
-          "error"
-        );
-        return;
-      }
-
-      const nullifier = finalPayload.nullifier_hash;
-      onVerified?.(nullifier);
-
-      await Swal.fire(
-        "✔ Verificado",
-        "Tu identidad fue confirmada correctamente.",
-        "success"
-      );
-    } catch (err) {
-      console.error("Error durante la verificación:", err);
-      await Swal.fire(
-        "Error",
-        `Hubo un problema durante la verificación.\n\nDetalle: ${
-          err?.message || String(err)
-        }`,
-        "error"
-      );
-    }
-  };
-
+  // Solo texto de estado, SIN botones
   return (
-    <button
-      onClick={handleVerify}
-      className="w-full border border-indigo-200 py-2 mt-4 rounded-xl text-indigo-600 font-semibold"
-    >
-      Verificar identidad con World ID 🌐
-    </button>
+    <div className="mt-2 text-xs text-center">
+      {status === "verifying" && (
+        <span className="text-indigo-600 font-semibold">
+          Conectando tu World ID...
+        </span>
+      )}
+      {status === "ok" && (
+        <span className="text-emerald-600 font-semibold">
+          ✔ World ID verificado
+        </span>
+      )}
+      {status === "error" && (
+        <span className="text-red-500">
+          No se pudo verificar tu World ID. Cierra y vuelve a abrir ChangeWLD.
+        </span>
+      )}
+    </div>
   );
 }
+
