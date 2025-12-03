@@ -5,10 +5,8 @@ import { API_BASE } from "./apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
 import BankSelector from "./components/BankSelector";
-import VerifyWorldID from "./components/VerifyWorldID";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { WLD_ABI } from "./wldAbi";
-import ConnectWallet from "./components/ConnectWallet";
 
 // Helper: convierte "3.125" a uint256 con 18 decimales (BigInt → string)
 function toTokenUnits(amountStr, decimals = 18) {
@@ -22,6 +20,14 @@ function toTokenUnits(amountStr, decimals = 18) {
   return BigInt(intPart) * base + BigInt(decPart || "0");
 }
 
+async function waitForMiniKit(maxAttempts = 15, delayMs = 200) {
+  for (let i = 0; i < maxAttempts; i++) {
+    if (MiniKit.isInstalled()) return true;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return MiniKit.isInstalled();
+}
+
 function App() {
   const [step, setStep] = useState(1);
   const [rate, setRate] = useState(null);
@@ -33,10 +39,15 @@ function App() {
   // 🔒 Verificación World ID
   const [isVerified, setIsVerified] = useState(false);
   const [verificationNullifier, setVerificationNullifier] = useState(null);
+  const [worldIdError, setWorldIdError] = useState(null);
 
-  // 🔗 Wallet y balance
+  // 🧾 Wallet + balance
   const [walletAddress, setWalletAddress] = useState(null);
   const [availableBalance, setAvailableBalance] = useState(null);
+  const [walletError, setWalletError] = useState(null);
+
+  // Para no ejecutar el auto-init dos veces
+  const [autoInitDone, setAutoInitDone] = useState(false);
 
   // ========= FORMULARIOS =========
   const [montoWLD, setMontoWLD] = useState("");
@@ -53,7 +64,7 @@ function App() {
   const sendWldToDestination = async (amountWLD) => {
     if (!MiniKit.isInstalled()) {
       await Swal.fire(
-        "Abre desde World App",
+        "Abre ChangeWLD desde World App",
         "La transferencia solo funciona dentro de la mini app en World App.",
         "warning"
       );
@@ -75,7 +86,6 @@ function App() {
       return null;
     }
 
-    // Convertir a unidades con 18 decimales
     const amountWei = toTokenUnits(String(amountWLD), 18);
 
     try {
@@ -130,29 +140,161 @@ function App() {
     }
   };
 
-  // ========= BALANCE POR NULLIFIER (auto) =========
+  // ========= AUTO: World ID + Wallet al abrir la mini app =========
   useEffect(() => {
-    const fetchBalance = async () => {
-      if (!verificationNullifier) return;
+    if (autoInitDone) return;
+
+    let cancelled = false;
+
+    const autoInit = async () => {
+      // 0) Esperar a que MiniKit esté listo
+      const installed = await waitForMiniKit();
+      if (!installed) {
+        if (!cancelled) {
+          setWorldIdError(
+            "No se pudo verificar tu World ID. Abre ChangeWLD desde la World App."
+          );
+          setWalletError(
+            "No se pudo conectar la billetera. Abre ChangeWLD desde la World App."
+          );
+        }
+        setAutoInitDone(true);
+        return;
+      }
 
       try {
-        const res = await axios.get(`${API_BASE}/api/user/balance`, {
-          params: { nullifier: verificationNullifier },
+        // 1️⃣ Verificar World ID
+        const { finalPayload } = await MiniKit.commandsAsync.verify({
+          action: "verify-changewld-v2",
+          signal: "changewld-device",
         });
 
-        if (res.data?.ok) {
-          setWalletAddress(res.data.wallet);
-          setAvailableBalance(res.data.balanceWLD || 0);
+        if (!finalPayload || finalPayload.status === "error") {
+          if (!cancelled) {
+            setWorldIdError(
+              "No se completó la verificación World ID en la app."
+            );
+          }
+          setAutoInitDone(true);
+          return;
+        }
+
+        const verifyRes = await axios.post(`${API_BASE}/api/verify-world-id`, {
+          payload: finalPayload,
+          action: "verify-changewld-v2",
+          signal: "changewld-device",
+        });
+
+        if (!verifyRes.data?.success) {
+          if (!cancelled) {
+            setWorldIdError(
+              "Tu World ID fue rechazado. Cierra y vuelve a abrir ChangeWLD."
+            );
+          }
+          setAutoInitDone(true);
+          return;
+        }
+
+        if (!cancelled) {
+          setIsVerified(true);
+          setVerificationNullifier(finalPayload.nullifier_hash);
+          setWorldIdError(null);
+        }
+
+        // 2️⃣ Autenticación de billetera (walletAuth + SIWE)
+        const nonceRes = await axios.get(`${API_BASE}/api/wallet-auth/nonce`);
+        if (!nonceRes.data?.ok) {
+          if (!cancelled) {
+            setWalletError(
+              nonceRes.data?.error ||
+                "No se pudo preparar la autenticación de billetera."
+            );
+          }
+          setAutoInitDone(true);
+          return;
+        }
+
+        const { nonce, signedNonce } = nonceRes.data;
+
+        const { finalPayload: walletPayload } =
+          await MiniKit.commandsAsync.walletAuth({
+            nonce,
+            statement:
+              "Inicias sesión en ChangeWLD con tu billetera World App.",
+          });
+
+        if (!walletPayload || walletPayload.status === "error") {
+          if (!cancelled) {
+            setWalletError(
+              "No se completó la conexión de la billetera en World App."
+            );
+          }
+          setAutoInitDone(true);
+          return;
+        }
+
+        const completeRes = await axios.post(
+          `${API_BASE}/api/wallet-auth/complete`,
+          {
+            nonce,
+            signedNonce,
+            finalPayloadJson: JSON.stringify(walletPayload),
+          }
+        );
+
+        if (!completeRes.data?.ok) {
+          if (!cancelled) {
+            setWalletError(
+              completeRes.data?.error ||
+                "El servidor rechazó la autenticación de la billetera."
+            );
+          }
+          setAutoInitDone(true);
+          return;
+        }
+
+        const addr = completeRes.data.walletAddress;
+        if (!cancelled) {
+          setWalletAddress(addr);
+          setWalletError(null);
+        }
+
+        // 3️⃣ Leer balance WLD de esa address (para botón MAX)
+        try {
+          const balRes = await axios.get(`${API_BASE}/api/wallet-balance`, {
+            params: { address: addr },
+          });
+
+          if (!cancelled && balRes.data?.ok) {
+            setAvailableBalance(balRes.data.balanceWLD || 0);
+          }
+        } catch (err) {
+          console.error("Error leyendo balance WLD:", err);
         }
       } catch (err) {
-        console.error("Error obteniendo balance:", err);
+        console.error("Error en autoInit World ID / wallet:", err);
+        if (!cancelled) {
+          if (!isVerified) {
+            setWorldIdError(
+              "No se pudo verificar tu World ID. Cierra y vuelve a abrir ChangeWLD."
+            );
+          } else {
+            setWalletError(
+              "No se pudo conectar la billetera. Cierra y vuelve a abrir ChangeWLD."
+            );
+          }
+        }
+      } finally {
+        if (!cancelled) setAutoInitDone(true);
       }
     };
 
-    if (isVerified && verificationNullifier) {
-      fetchBalance();
-    }
-  }, [isVerified, verificationNullifier]);
+    autoInit();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [autoInitDone, isVerified]);
 
   // ========= 1) CARGAR TASA DESDE BACKEND (con auto-refresh) =========
   useEffect(() => {
@@ -204,22 +346,10 @@ function App() {
     }
   }, [orderInfo, hasShownPaidAlert]);
 
-  // ========= CALLBACK CUANDO SE VERIFICA WORLD ID =========
-  const handleWorldIdVerified = (nullifierValue) => {
-    setIsVerified(true);
-    setVerificationNullifier(
-      nullifierValue || "device-test-nullifier-changewld"
-    );
-  };
-
   // ========= ETAPA 1: CONFIRMAR MONTO (solo validación) =========
   const handleStep1 = async () => {
-    if (!montoWLD || Number(montoWLD) < 1) {
-      Swal.fire(
-        "Monto mínimo 1 WLD",
-        "Debes ingresar al menos 1 WLD para crear una orden.",
-        "warning"
-      );
+    if (!montoWLD || Number(montoWLD) <= 0) {
+      Swal.fire("Monto inválido", "Ingresa un valor válido en WLD.", "warning");
       return;
     }
 
@@ -267,7 +397,6 @@ function App() {
       return;
     }
 
-    // Guardamos el id interno de la transacción para ligarlo a la orden
     lastTxIdRef.current = txId;
 
     // 2️⃣ Ahora sí, creamos la orden en el backend
@@ -291,7 +420,6 @@ function App() {
         montoCOP: Number(montoCOP.toFixed(2)),
         verified: isVerified,
         nullifier: verificationNullifier,
-        // Guardamos el id interno de la tx de World App
         wld_tx_id: lastTxIdRef.current || txId,
       });
 
@@ -350,7 +478,7 @@ function App() {
 
   const continuarDisabled =
     !montoWLD ||
-    Number(montoWLD) < 1 ||
+    Number(montoWLD) <= 0 ||
     !rate?.wld_cop_usuario ||
     !isVerified ||
     !verificationNullifier;
@@ -399,7 +527,7 @@ function App() {
 
         {/* CONTENIDO */}
         <AnimatePresence mode="wait">
-          {/* ETAPA 1 — MONTO + WORLD ID */}
+          {/* ETAPA 1 — MONTO + AUTO WORLD ID + AUTO WALLET */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -412,14 +540,14 @@ function App() {
                 Ingresa cuántos <b>WLD</b> quieres cambiar.
               </p>
 
-              <div className="mb-4">
+              <div className="mb-3">
                 <label className="block text-sm text-gray-600 mb-1">
                   Monto en WLD (mínimo 1 WLD)
                 </label>
                 <div className="flex gap-2">
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     step="0.0001"
                     className="flex-1 border border-gray-300 rounded-xl px-4 py-3"
                     placeholder="Ej: 12.5"
@@ -470,22 +598,53 @@ function App() {
                 </p>
               </div>
 
-              <div className="mt-5">
-  {/* World ID se verifica automáticamente al montar */}
-  <VerifyWorldID onVerified={handleWorldIdVerified} />
-</div>
+              {/* ESTADOS DE WORLD ID Y BILLETERA (sin botones) */}
+              <div className="mt-4 text-xs text-center">
+                <p>
+                  Estado verificación World ID:{" "}
+                  {isVerified ? (
+                    <span className="text-emerald-600 font-semibold">
+                      ✔ Verificado
+                    </span>
+                  ) : worldIdError ? (
+                    <span className="text-red-500 font-semibold">
+                      {worldIdError}
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">Conectando...</span>
+                  )}
+                </p>
 
-<div className="mt-3">
-  {/* La billetera se conecta automáticamente al montar */}
-  <ConnectWallet
-    nullifier={verificationNullifier}
-    onWalletLinked={({ wallet, balanceWLD }) => {
-      setWalletAddress(wallet);
-      setAvailableBalance(balanceWLD);
-    }}
-  />
-</div>
+                <p className="mt-2">
+                  Billetera:{" "}
+                  {walletAddress ? (
+                    <span className="font-mono text-[11px] text-indigo-700">
+                      {walletAddress.slice(0, 6)}...
+                      {walletAddress.slice(-4)}
+                    </span>
+                  ) : walletError ? (
+                    <span className="text-red-500 font-semibold">
+                      {walletError}
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">Conectando...</span>
+                  )}
+                </p>
+              </div>
 
+              {/* Mensajes en rojo como los de tu screenshot */}
+              {worldIdError && (
+                <p className="mt-3 text-xs text-center text-red-500">
+                  No se pudo verificar tu World ID. Cierra y vuelve a abrir
+                  ChangeWLD.
+                </p>
+              )}
+              {walletError && (
+                <p className="mt-1 text-xs text-center text-red-500">
+                  No se pudo conectar la billetera. Cierra y vuelve a abrir
+                  ChangeWLD.
+                </p>
+              )}
 
               <button
                 onClick={handleStep1}
@@ -631,10 +790,13 @@ function App() {
                   setOrderInfo(null);
                   setIsVerified(false);
                   setVerificationNullifier(null);
-                  setHasShownPaidAlert(false);
-                  lastTxIdRef.current = null;
+                  setWorldIdError(null);
                   setWalletAddress(null);
                   setAvailableBalance(null);
+                  setWalletError(null);
+                  setHasShownPaidAlert(false);
+                  setAutoInitDone(false);
+                  lastTxIdRef.current = null;
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
