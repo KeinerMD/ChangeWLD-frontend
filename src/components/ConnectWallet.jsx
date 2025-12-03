@@ -1,5 +1,5 @@
 // src/components/ConnectWallet.jsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import Swal from "sweetalert2";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { API_BASE } from "../apiConfig";
@@ -7,22 +7,32 @@ import { API_BASE } from "../apiConfig";
 export default function ConnectWallet({ nullifier, onWalletLinked }) {
   const [connecting, setConnecting] = useState(false);
   const [walletAddress, setWalletAddress] = useState(null);
+  const [triedOnce, setTriedOnce] = useState(false);
 
-  const handleConnect = async () => {
+  const connectWallet = async () => {
     try {
+      if (!MiniKit.isInstalled()) {
+        await Swal.fire(
+          "Abre ChangeWLD desde World App",
+          "La conexión de billetera solo funciona dentro de la World App (Mini Apps → ChangeWLD).",
+          "warning"
+        );
+        return;
+      }
+
       setConnecting(true);
 
-      // 1️⃣ Pedimos nonce + signedNonce a tu backend
+      // 1️⃣ Pedimos nonce + signedNonce al backend
       const nonceRes = await fetch(`${API_BASE}/api/wallet-auth/nonce`);
       const nonceData = await nonceRes.json();
 
-      if (!nonceData.ok) {
-        throw new Error(nonceData.error || "No se pudo obtener nonce");
+      if (!nonceRes.ok || !nonceData.ok) {
+        throw new Error(nonceData.error || "No se pudo obtener el nonce.");
       }
 
       const { nonce, signedNonce } = nonceData;
 
-      // 2️⃣ Ejecutamos walletAuth en la World App
+      // 2️⃣ Ejecutamos walletAuth en World App (SIWE)
       const { finalPayload } = await MiniKit.commandsAsync.walletAuth({
         nonce,
         statement: "Inicias sesión en ChangeWLD con tu billetera World App",
@@ -34,7 +44,6 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
           "No se completó la firma en tu billetera.",
           "error"
         );
-        setConnecting(false);
         return;
       }
 
@@ -51,35 +60,57 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
 
       const data = await resp.json();
 
-      if (!resp.ok || !data.ok) {
-        throw new Error(data.error || "El backend rechazó la autenticación");
+      if (!resp.ok || !data.ok || !data.walletAddress) {
+        throw new Error(data.error || "El backend rechazó la autenticación.");
       }
 
       const address = data.walletAddress;
       setWalletAddress(address);
 
-      // opcional: guardar token si luego quieres auth de rutas
       if (data.walletToken) {
         localStorage.setItem("changewld_wallet_token", data.walletToken);
       }
 
-      // avisamos al padre
-      onWalletLinked?.({
-        wallet: address,
-        balanceWLD: data.balanceWLD, // si en el futuro lo agregas
-      });
+      // 4️⃣ Obtener balance real de WLD en World Chain desde el backend
+      let balanceWLD = null;
+      try {
+        const balRes = await fetch(
+          `${API_BASE}/api/wallet-balance?address=${encodeURIComponent(
+            address
+          )}`
+        );
+        const balData = await balRes.json();
+
+        if (balRes.ok && balData.ok) {
+          balanceWLD = balData.balanceWLD ?? null;
+        }
+      } catch (err) {
+        console.warn("No se pudo obtener el balance WLD:", err);
+      }
+
+      // 5️⃣ Avisar al padre para que funcione el botón MAX
+      if (typeof onWalletLinked === "function") {
+        onWalletLinked({
+          wallet: address,
+          balanceWLD,
+        });
+      }
+
+      const saldoTexto =
+        balanceWLD != null
+          ? `\n\nSaldo estimado: ${balanceWLD.toFixed(4)} WLD`
+          : "";
 
       await Swal.fire(
         "Billetera conectada",
-        `Tu dirección es:\n${address}`,
+        `Tu dirección es:\n${address}${saldoTexto}`,
         "success"
       );
     } catch (err) {
       console.error("Error en ConnectWallet:", err);
       await Swal.fire(
         "Error",
-        err?.message ||
-          "No se pudo conectar la billetera. Verifica que abriste ChangeWLD desde la World App.",
+        err?.message || "No se pudo conectar la billetera.",
         "error"
       );
     } finally {
@@ -87,29 +118,36 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
     }
   };
 
-  return (
-    <div className="mt-4">
-      <button
-        type="button"
-        onClick={handleConnect}
-        disabled={connecting}
-        className={`w-full py-2 rounded-xl border text-sm font-semibold ${
-          walletAddress
-            ? "border-emerald-400 text-emerald-600 bg-emerald-50"
-            : "border-indigo-200 text-indigo-600 bg-white"
-        }`}
-      >
-        {connecting
-          ? "Conectando billetera..."
-          : walletAddress
-          ? "Billetera conectada ✔"
-          : "Conectar billetera para usar MAX 🔗"}
-      </button>
+  // 🔄 Se lanza automáticamente una vez al montar el componente
+  useEffect(() => {
+    if (!triedOnce && !walletAddress) {
+      setTriedOnce(true);
+      connectWallet();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triedOnce, walletAddress]);
 
-      {walletAddress && (
-        <p className="mt-1 text-[11px] text-gray-400 break-all text-center">
-          {walletAddress}
-        </p>
+  // Solo texto de estado, SIN botones
+  const short =
+    walletAddress && `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
+
+  return (
+    <div className="mt-2 text-xs text-center">
+      {connecting && (
+        <span className="text-indigo-600 font-semibold">
+          Conectando tu billetera...
+        </span>
+      )}
+      {!connecting && walletAddress && (
+        <span className="text-emerald-600 font-semibold">
+          ✔ Billetera conectada:{" "}
+          <span className="font-mono text-[11px]">{short}</span>
+        </span>
+      )}
+      {!connecting && !walletAddress && triedOnce && (
+        <span className="text-red-500">
+          No se pudo conectar la billetera. Cierra y vuelve a abrir ChangeWLD.
+        </span>
       )}
     </div>
   );
