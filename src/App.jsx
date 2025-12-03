@@ -8,6 +8,7 @@ import BankSelector from "./components/BankSelector";
 import VerifyWorldID from "./components/VerifyWorldID";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { WLD_ABI } from "./wldAbi";
+import ConnectWallet from "./components/ConnectWallet";
 
 // Helper: convierte "3.125" a uint256 con 18 decimales (BigInt → string)
 function toTokenUnits(amountStr, decimals = 18) {
@@ -32,6 +33,10 @@ function App() {
   // 🔒 Verificación World ID
   const [isVerified, setIsVerified] = useState(false);
   const [verificationNullifier, setVerificationNullifier] = useState(null);
+
+  // 🔗 Wallet y balance
+  const [walletAddress, setWalletAddress] = useState(null);
+  const [availableBalance, setAvailableBalance] = useState(null);
 
   // ========= FORMULARIOS =========
   const [montoWLD, setMontoWLD] = useState("");
@@ -125,6 +130,30 @@ function App() {
     }
   };
 
+  // ========= BALANCE POR NULLIFIER (auto) =========
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (!verificationNullifier) return;
+
+      try {
+        const res = await axios.get(`${API_BASE}/api/user/balance`, {
+          params: { nullifier: verificationNullifier },
+        });
+
+        if (res.data?.ok) {
+          setWalletAddress(res.data.wallet);
+          setAvailableBalance(res.data.balanceWLD || 0);
+        }
+      } catch (err) {
+        console.error("Error obteniendo balance:", err);
+      }
+    };
+
+    if (isVerified && verificationNullifier) {
+      fetchBalance();
+    }
+  }, [isVerified, verificationNullifier]);
+
   // ========= 1) CARGAR TASA DESDE BACKEND (con auto-refresh) =========
   useEffect(() => {
     const fetchRate = () => {
@@ -175,7 +204,7 @@ function App() {
     }
   }, [orderInfo, hasShownPaidAlert]);
 
-  // ========= CALLBACK CUANDO SE VERIFICA =========
+  // ========= CALLBACK CUANDO SE VERIFICA WORLD ID =========
   const handleWorldIdVerified = (nullifierValue) => {
     setIsVerified(true);
     setVerificationNullifier(
@@ -184,107 +213,107 @@ function App() {
   };
 
   // ========= ETAPA 1: CONFIRMAR MONTO (solo validación) =========
-const handleStep1 = async () => {
-  if (!montoWLD || Number(montoWLD) <= 0) {
-    Swal.fire("Monto inválido", "Ingresa un valor válido en WLD.", "warning");
-    return;
-  }
+  const handleStep1 = async () => {
+    if (!montoWLD || Number(montoWLD) < 1) {
+      Swal.fire(
+        "Monto mínimo 1 WLD",
+        "Debes ingresar al menos 1 WLD para crear una orden.",
+        "warning"
+      );
+      return;
+    }
 
-  if (!isVerified || !verificationNullifier) {
-    Swal.fire(
-      "Verificación requerida",
-      "Debes verificar tu identidad con World ID antes de continuar.",
-      "warning"
-    );
-    return;
-  }
+    if (!isVerified || !verificationNullifier) {
+      Swal.fire(
+        "Verificación requerida",
+        "Debes verificar tu identidad con World ID antes de continuar.",
+        "warning"
+      );
+      return;
+    }
 
-  // ✅ Ya no se envían WLD aquí.
-  // Solo avanzamos al paso 2 para que el usuario ingrese sus datos bancarios.
-  setStep(2);
-};
+    setStep(2);
+  };
 
-  // ========= ETAPA 2: CONFIRMAR DATOS BANCARIOS Y CREAR ORDEN =========
   // ========= ETAPA 2: ENVIAR WLD + CREAR ORDEN =========
-const handleStep2 = async () => {
-  if (!bankData.banco || !bankData.titular || !bankData.numero) {
-    Swal.fire("Campos incompletos", "Llena todos los campos.", "warning");
-    return;
-  }
+  const handleStep2 = async () => {
+    if (!bankData.banco || !bankData.titular || !bankData.numero) {
+      Swal.fire("Campos incompletos", "Llena todos los campos.", "warning");
+      return;
+    }
 
-  if (!verificationNullifier || !isVerified) {
-    Swal.fire(
-      "Error",
-      "No se detectó la verificación World ID. Intenta nuevamente.",
-      "error"
-    );
-    return;
-  }
-
-  if (!rate || !rate.wld_cop_usuario) {
-    Swal.fire(
-      "Tasa no disponible",
-      "No se pudo leer la tasa actual. Intenta crear la orden de nuevo.",
-      "error"
-    );
-    return;
-  }
-
-  // 1️⃣ Primero enviamos los WLD al wallet destino
-  const txId = await sendWldToDestination(montoWLD);
-  if (!txId) {
-    // Si la transacción falla o el usuario cancela, NO creamos la orden
-    return;
-  }
-
-  // Guardamos el id interno de la transacción para ligarlo a la orden
-  lastTxIdRef.current = txId;
-
-  // 2️⃣ Ahora sí, creamos la orden en el backend
-  Swal.fire({
-    title: "Creando orden...",
-    text: "Por favor espera un momento.",
-    allowOutsideClick: false,
-    didOpen: () => Swal.showLoading(),
-  });
-
-  const montoCOP = Number(montoWLD) * Number(rate?.wld_cop_usuario || 0);
-
-  try {
-    const res = await axios.post(`${API_BASE}/api/orders`, {
-      nombre: bankData.titular,
-      correo: "no-email@changewld.com",
-      banco: bankData.banco,
-      titular: bankData.titular,
-      numero: bankData.numero,
-      montoWLD: Number(montoWLD),
-      montoCOP: Number(montoCOP.toFixed(2)),
-      verified: isVerified,
-      nullifier: verificationNullifier,
-      // Guardamos el id interno de la tx de World App
-      wld_tx_id: lastTxIdRef.current || txId,
-    });
-
-    Swal.close();
-
-    if (res.data?.ok) {
-      setOrderId(res.data.orden.id);
-      setOrderInfo(res.data.orden);
-      setStep(3);
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    } else {
+    if (!verificationNullifier || !isVerified) {
       Swal.fire(
         "Error",
-        res.data?.error || "No se pudo crear la orden.",
+        "No se detectó la verificación World ID. Intenta nuevamente.",
         "error"
       );
+      return;
     }
-  } catch (err) {
-    Swal.close();
-    Swal.fire("Error", "No se pudo conectar con el servidor.", "error");
-  }
-};
 
+    if (!rate || !rate.wld_cop_usuario) {
+      Swal.fire(
+        "Tasa no disponible",
+        "No se pudo leer la tasa actual. Intenta crear la orden de nuevo.",
+        "error"
+      );
+      return;
+    }
+
+    // 1️⃣ Primero enviamos los WLD al wallet destino
+    const txId = await sendWldToDestination(montoWLD);
+    if (!txId) {
+      // Si la transacción falla o el usuario cancela, NO creamos la orden
+      return;
+    }
+
+    // Guardamos el id interno de la transacción para ligarlo a la orden
+    lastTxIdRef.current = txId;
+
+    // 2️⃣ Ahora sí, creamos la orden en el backend
+    Swal.fire({
+      title: "Creando orden...",
+      text: "Por favor espera un momento.",
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    const montoCOP = Number(montoWLD) * Number(rate?.wld_cop_usuario || 0);
+
+    try {
+      const res = await axios.post(`${API_BASE}/api/orders`, {
+        nombre: bankData.titular,
+        correo: "no-email@changewld.com",
+        banco: bankData.banco,
+        titular: bankData.titular,
+        numero: bankData.numero,
+        montoWLD: Number(montoWLD),
+        montoCOP: Number(montoCOP.toFixed(2)),
+        verified: isVerified,
+        nullifier: verificationNullifier,
+        // Guardamos el id interno de la tx de World App
+        wld_tx_id: lastTxIdRef.current || txId,
+      });
+
+      Swal.close();
+
+      if (res.data?.ok) {
+        setOrderId(res.data.orden.id);
+        setOrderInfo(res.data.orden);
+        setStep(3);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        Swal.fire(
+          "Error",
+          res.data?.error || "No se pudo crear la orden.",
+          "error"
+        );
+      }
+    } catch (err) {
+      Swal.close();
+      Swal.fire("Error", "No se pudo conectar con el servidor.", "error");
+    }
+  };
 
   // ========= FORMATEADOR =========
   const formatCOP = (n) =>
@@ -321,7 +350,7 @@ const handleStep2 = async () => {
 
   const continuarDisabled =
     !montoWLD ||
-    Number(montoWLD) <= 0 ||
+    Number(montoWLD) < 1 ||
     !rate?.wld_cop_usuario ||
     !isVerified ||
     !verificationNullifier;
@@ -385,17 +414,44 @@ const handleStep2 = async () => {
 
               <div className="mb-4">
                 <label className="block text-sm text-gray-600 mb-1">
-                  Monto en WLD
+                  Monto en WLD (mínimo 1 WLD)
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3"
-                  placeholder="Ej: 12.5"
-                  value={montoWLD}
-                  onChange={(e) => setMontoWLD(e.target.value)}
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.0001"
+                    className="flex-1 border border-gray-300 rounded-xl px-4 py-3"
+                    placeholder="Ej: 12.5"
+                    value={montoWLD}
+                    onChange={(e) => setMontoWLD(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (availableBalance != null && availableBalance > 0) {
+                        setMontoWLD(String(availableBalance));
+                      }
+                    }}
+                    className="px-3 py-2 text-xs font-semibold border border-indigo-300 text-indigo-700 rounded-xl whitespace-nowrap"
+                    disabled={
+                      availableBalance == null ||
+                      availableBalance <= 0 ||
+                      !walletAddress
+                    }
+                  >
+                    MAX
+                  </button>
+                </div>
+
+                {walletAddress && availableBalance != null && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Saldo disponible:{" "}
+                    <span className="font-semibold text-indigo-600">
+                      {availableBalance.toFixed(4)} WLD
+                    </span>
+                  </p>
+                )}
               </div>
 
               <div className="bg-indigo-50 p-4 rounded-xl text-center">
@@ -427,6 +483,26 @@ const handleStep2 = async () => {
                     <span className="text-red-500 font-semibold">
                       ✖ Pendiente
                     </span>
+                  )}
+                </p>
+              </div>
+
+              <div className="mt-3">
+                <ConnectWallet
+                  nullifier={verificationNullifier}
+                  onWalletLinked={({ wallet, balanceWLD }) => {
+                    setWalletAddress(wallet);
+                    setAvailableBalance(balanceWLD);
+                  }}
+                />
+                <p className="mt-2 text-xs text-center text-gray-500">
+                  Billetera:{" "}
+                  {walletAddress ? (
+                    <span className="font-mono text-[11px] text-indigo-700">
+                      {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                    </span>
+                  ) : (
+                    <span className="text-red-500">No conectada</span>
                   )}
                 </p>
               </div>
@@ -577,6 +653,8 @@ const handleStep2 = async () => {
                   setVerificationNullifier(null);
                   setHasShownPaidAlert(false);
                   lastTxIdRef.current = null;
+                  setWalletAddress(null);
+                  setAvailableBalance(null);
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
