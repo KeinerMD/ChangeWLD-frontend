@@ -22,7 +22,7 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
 
       setConnecting(true);
 
-      // 1️⃣ Pedimos nonce + signedNonce al backend
+      //1️⃣ Pedimos nonce + signedNonce al backend
       const nonceRes = await fetch(`${API_BASE}/api/wallet-auth/nonce`);
       const nonceData = await nonceRes.json();
 
@@ -98,12 +98,13 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
 
       const saldoTexto =
         balanceWLD != null
-          ? `\n\nSaldo estimado: ${balanceWLD.toFixed(4)} WLD`
-          : "";
+          ? `Saldo estimado: ${balanceWLD.toFixed(4)} WLD`
+          : "Saldo estimado no disponible.";
 
+      // 🚫 Ya no mostramos la dirección de la billetera (cumple guías)
       await Swal.fire(
         "Billetera conectada",
-        `Tu dirección es:\n${address}${saldoTexto}`,
+        `Tu billetera de World App se conectó correctamente.\n${saldoTexto}`,
         "success"
       );
     } catch (err) {
@@ -127,10 +128,7 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [triedOnce, walletAddress]);
 
-  // Solo texto de estado, SIN botones
-  const short =
-    walletAddress && `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`;
-
+  // Solo texto de estado, SIN mostrar address
   return (
     <div className="mt-2 text-xs text-center">
       {connecting && (
@@ -140,8 +138,7 @@ export default function ConnectWallet({ nullifier, onWalletLinked }) {
       )}
       {!connecting && walletAddress && (
         <span className="text-emerald-600 font-semibold">
-          ✔ Billetera conectada:{" "}
-          <span className="font-mono text-[11px]">{short}</span>
+          ✔ Billetera conectada
         </span>
       )}
       {!connecting && !walletAddress && triedOnce && (
