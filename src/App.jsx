@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import BankSelector from "./components/BankSelector";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { WLD_ABI } from "./wldAbi";
+import OrderSearch from "./OrderSearch";
 
 // Helper: convierte "3.125" a uint256 con 18 decimales (BigInt → string)
 function toTokenUnits(amountStr, decimals = 18) {
@@ -29,6 +30,8 @@ async function waitForMiniKit(maxAttempts = 15, delayMs = 200) {
 }
 
 function App() {
+  const [view, setView] = useState("main"); // "main" | "buscar"
+
   const [step, setStep] = useState(1);
   const [rate, setRate] = useState(null);
   const [loadingRate, setLoadingRate] = useState(false);
@@ -464,13 +467,6 @@ function App() {
     }
   };
 
-  const tasaTexto =
-    rate?.wld_cop_usuario && !loadingRate
-      ? `${rate.wld_cop_usuario.toLocaleString("es-CO")} COP por 1 WLD`
-      : loadingRate
-      ? "Cargando tasa..."
-      : "Tasa no disponible";
-
   const recibiriasTexto =
     montoWLD && rate?.wld_cop_usuario
       ? `${formatCOP(montoWLD * rate.wld_cop_usuario)} COP`
@@ -491,7 +487,7 @@ function App() {
         animate={{ opacity: 1, y: 0 }}
         className="bg-white shadow-2xl rounded-3xl p-7 w-full max-w-md box-border"
       >
-        {/* HEADER */}
+        {/* HEADER (COMÚN A TODAS LAS VISTAS) */}
         <div className="mb-5 text-center">
           <h1 className="text-3xl font-bold text-indigo-700 mb-1">
             💱 ChangeWLD
@@ -501,311 +497,325 @@ function App() {
           </p>
         </div>
 
-        {/* STEPPER */}
-        <div className="flex items-center justify-between mb-6">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="flex-1 flex flex-col items-center">
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                  step === s
-                    ? "bg-indigo-600 text-white"
-                    : step > s
-                    ? "bg-emerald-500 text-white"
-                    : "bg-gray-200 text-gray-500"
-                }`}
-              >
-                {s}
-              </div>
-              <p className="text-[10px] text-gray-500 mt-1">
-                {s === 1 && "Monto"}
-                {s === 2 && "Datos Bancarios"}
-                {s === 3 && "Estado"}
-              </p>
+        {view === "main" ? (
+          <>
+            {/* STEPPER SOLO EN VISTA PRINCIPAL */}
+            <div className="flex items-center justify-between mb-6">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className="flex-1 flex flex-col items-center">
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                      step === s
+                        ? "bg-indigo-600 text-white"
+                        : step > s
+                        ? "bg-emerald-500 text-white"
+                        : "bg-gray-200 text-gray-500"
+                    }`}
+                  >
+                    {s}
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    {s === 1 && "Monto"}
+                    {s === 2 && "Datos Bancarios"}
+                    {s === 3 && "Estado"}
+                  </p>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        {/* CONTENIDO */}
-        <AnimatePresence mode="wait">
-          {/* ETAPA 1 — MONTO + AUTO WORLD ID + AUTO WALLET */}
-          {step === 1 && (
-            <motion.div
-              key="step1"
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -40 }}
-              transition={{ duration: 0.25 }}
-            >
-              <p className="text-center text-gray-500 mb-4">
-                Ingresa cuántos <b>WLD</b> quieres cambiar.
-              </p>
+            {/* CONTENIDO */}
+            <AnimatePresence mode="wait">
+              {/* ETAPA 1 — MONTO */}
+              {step === 1 && (
+                <motion.div
+                  key="step1"
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -40 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <p className="text-center text-gray-500 mb-4">
+                    Ingresa cuántos <b>WLD</b> quieres cambiar.
+                  </p>
 
-              <div className="mb-3">
-                <label className="block text-sm text-gray-600 mb-1">
-                  Monto en WLD (mínimo 1 WLD)
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.0001"
-                    className="flex-1 border border-gray-300 rounded-xl px-4 py-3"
-                    placeholder="Ej: 12.5"
-                    value={montoWLD}
-                    onChange={(e) => setMontoWLD(e.target.value)}
-                  />
+                  <div className="mb-3">
+                    <label className="block text-sm text-gray-600 mb-1">
+                      Monto en WLD (mínimo 1 WLD)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        className="flex-1 border border-gray-300 rounded-xl px-4 py-3"
+                        placeholder="Ej: 12.5"
+                        value={montoWLD}
+                        onChange={(e) => setMontoWLD(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            availableBalance != null &&
+                            availableBalance > 0
+                          ) {
+                            setMontoWLD(String(availableBalance));
+                          }
+                        }}
+                        className="px-3 py-2 text-xs font-semibold border border-indigo-300 text-indigo-700 rounded-xl whitespace-nowrap"
+                        disabled={
+                          availableBalance == null ||
+                          availableBalance <= 0 ||
+                          !walletAddress
+                        }
+                      >
+                        MAX
+                      </button>
+                    </div>
+
+                    {walletAddress && availableBalance != null && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        Saldo disponible:{" "}
+                        <span className="font-semibold text-indigo-600">
+                          {availableBalance.toFixed(4)} WLD
+                        </span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* TARJETA SIN "TASA ACTUAL" NI TEXTO DE 60s */}
+                  <div className="bg-indigo-50 p-4 rounded-xl text-center">
+                    <p className="text-xs text-gray-500 mt-1">Recibirías:</p>
+                    <p className="text-2xl font-extrabold text-indigo-700">
+                      {recibiriasTexto}
+                    </p>
+                  </div>
+
+                  {/* ESTADOS DE WORLD ID Y BILLETERA (sin botones) */}
+                  <div className="mt-4 text-xs text-center">
+                    <p>
+                      Estado verificación World ID:{" "}
+                      {isVerified ? (
+                        <span className="text-emerald-600 font-semibold">
+                          ✔ Verificado
+                        </span>
+                      ) : worldIdError ? (
+                        <span className="text-red-500 font-semibold">
+                          {worldIdError}
+                        </span>
+                      ) : (
+                        <span className="text-gray-500">Conectando...</span>
+                      )}
+                    </p>
+
+                    <p className="mt-2">
+                      Billetera:{" "}
+                      {walletAddress ? (
+                        <span className="font-mono text-[11px] text-indigo-700">
+                          {walletAddress.slice(0, 6)}...
+                          {walletAddress.slice(-4)}
+                        </span>
+                      ) : walletError ? (
+                        <span className="text-red-500 font-semibold">
+                          {walletError}
+                        </span>
+                      ) : (
+                        <span className="text-gray-500">Conectando...</span>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Mensajes en rojo como en tu diseño */}
+                  {worldIdError && (
+                    <p className="mt-3 text-xs text-center text-red-500">
+                      No se pudo verificar tu World ID. Cierra y vuelve a abrir
+                      ChangeWLD.
+                    </p>
+                  )}
+                  {walletError && (
+                    <p className="mt-1 text-xs text-center text-red-500">
+                      No se pudo conectar la billetera. Cierra y vuelve a abrir
+                      ChangeWLD.
+                    </p>
+                  )}
+
+                  <button
+                    onClick={handleStep1}
+                    disabled={continuarDisabled}
+                    className={`mt-4 w-full py-3 rounded-xl font-semibold ${
+                      continuarDisabled
+                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        : "bg-indigo-600 text-white"
+                    }`}
+                  >
+                    Continuar
+                  </button>
+
+                  {/* NUEVO BOTÓN: BUSCAR ORDEN */}
                   <button
                     type="button"
-                    onClick={() => {
-                      if (availableBalance != null && availableBalance > 0) {
-                        setMontoWLD(String(availableBalance));
-                      }
-                    }}
-                    className="px-3 py-2 text-xs font-semibold border border-indigo-300 text-indigo-700 rounded-xl whitespace-nowrap"
-                    disabled={
-                      availableBalance == null ||
-                      availableBalance <= 0 ||
-                      !walletAddress
-                    }
+                    onClick={() => setView("buscar")}
+                    className="mt-2 w-full py-3 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-semibold bg-indigo-50"
                   >
-                    MAX
+                    Buscar orden
                   </button>
-                </div>
+                </motion.div>
+              )}
 
-                {walletAddress && availableBalance != null && (
-                  <p className="mt-1 text-xs text-gray-500">
-                    Saldo disponible:{" "}
-                    <span className="font-semibold text-indigo-600">
-                      {availableBalance.toFixed(4)} WLD
-                    </span>
+              {/* ETAPA 2 — DATOS BANCARIOS */}
+              {step === 2 && (
+                <motion.div
+                  key="step2"
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -40 }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <p className="text-center text-gray-500 mb-4">
+                    Ingresa los datos donde recibirás los COP.
                   </p>
-                )}
-              </div>
 
-              <div className="bg-indigo-50 p-4 rounded-xl text-center">
-                <p className="text-sm text-gray-600">Tasa actual:</p>
-                <p className="text-lg font-bold text-indigo-700">
-                  {tasaTexto}
-                </p>
+                  <label className="block text-sm text-gray-600 mb-1">
+                    Banco o billetera
+                  </label>
+                  <BankSelector
+                    value={bankData.banco}
+                    onChange={(b) => setBankData({ ...bankData, banco: b })}
+                  />
 
-                <p className="text-xs text-gray-500 mt-2">Recibirías:</p>
-                <p className="text-2xl font-extrabold text-indigo-700">
-                  {recibiriasTexto}
-                </p>
+                  <label className="block text-sm text-gray-600 mt-3 mb-1">
+                    Titular de la cuenta
+                  </label>
+                  <input
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3"
+                    placeholder="Nombre del titular"
+                    value={bankData.titular}
+                    onChange={(e) =>
+                      setBankData({ ...bankData, titular: e.target.value })
+                    }
+                  />
 
-                <p className="mt-2 text-[11px] text-gray-400">
-                  La tasa se actualiza automáticamente cada 60 segundos.
-                </p>
-              </div>
+                  <label className="block text-sm text-gray-600 mt-3 mb-1">
+                    Número de cuenta / Nequi / Bre-B
+                  </label>
+                  <input
+                    className="w-full border border-gray-300 rounded-xl px-4 py-3"
+                    placeholder="Ej: 3001234567"
+                    value={bankData.numero}
+                    onChange={(e) =>
+                      setBankData({ ...bankData, numero: e.target.value })
+                    }
+                  />
 
-              {/* ESTADOS DE WORLD ID Y BILLETERA (sin botones) */}
-              <div className="mt-4 text-xs text-center">
-                <p>
-                  Estado verificación World ID:{" "}
-                  {isVerified ? (
-                    <span className="text-emerald-600 font-semibold">
-                      ✔ Verificado
+                  <div className="text-xs text-gray-400 mt-3">
+                    Recibirás:{" "}
+                    <span className="font-semibold text-indigo-600">
+                      {formatCOP(montoWLD * rate?.wld_cop_usuario || 0)} COP
                     </span>
-                  ) : worldIdError ? (
-                    <span className="text-red-500 font-semibold">
-                      {worldIdError}
-                    </span>
-                  ) : (
-                    <span className="text-gray-500">Conectando...</span>
-                  )}
-                </p>
+                  </div>
 
-                <p className="mt-2">
-                  Billetera:{" "}
-                  {walletAddress ? (
-                    <span className="font-mono text-[11px] text-indigo-700">
-                      {walletAddress.slice(0, 6)}...
-                      {walletAddress.slice(-4)}
-                    </span>
-                  ) : walletError ? (
-                    <span className="text-red-500 font-semibold">
-                      {walletError}
-                    </span>
-                  ) : (
-                    <span className="text-gray-500">Conectando...</span>
-                  )}
-                </p>
-              </div>
-
-              {/* Mensajes en rojo como los de tu screenshot */}
-              {worldIdError && (
-                <p className="mt-3 text-xs text-center text-red-500">
-                  No se pudo verificar tu World ID. Cierra y vuelve a abrir
-                  ChangeWLD.
-                </p>
-              )}
-              {walletError && (
-                <p className="mt-1 text-xs text-center text-red-500">
-                  No se pudo conectar la billetera. Cierra y vuelve a abrir
-                  ChangeWLD.
-                </p>
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={() => setStep(1)}
+                      className="w-1/3 border border-gray-300 py-3 rounded-xl"
+                    >
+                      Volver
+                    </button>
+                    <button
+                      onClick={handleStep2}
+                      className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold"
+                    >
+                      Crear orden
+                    </button>
+                  </div>
+                </motion.div>
               )}
 
-              <button
-                onClick={handleStep1}
-                disabled={continuarDisabled}
-                className={`mt-4 w-full py-3 rounded-xl font-semibold ${
-                  continuarDisabled
-                    ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    : "bg-indigo-600 text-white"
-                }`}
-              >
-                Continuar
-              </button>
-            </motion.div>
-          )}
-
-          {/* ETAPA 2 — DATOS BANCARIOS */}
-          {step === 2 && (
-            <motion.div
-              key="step2"
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -40 }}
-              transition={{ duration: 0.25 }}
-            >
-              <p className="text-center text-gray-500 mb-4">
-                Ingresa los datos donde recibirás los COP.
-              </p>
-
-              <label className="block text-sm text-gray-600 mb-1">
-                Banco o billetera
-              </label>
-              <BankSelector
-                value={bankData.banco}
-                onChange={(b) => setBankData({ ...bankData, banco: b })}
-              />
-
-              <label className="block text-sm text-gray-600 mt-3 mb-1">
-                Titular de la cuenta
-              </label>
-              <input
-                className="w-full border border-gray-300 rounded-xl px-4 py-3"
-                placeholder="Nombre del titular"
-                value={bankData.titular}
-                onChange={(e) =>
-                  setBankData({ ...bankData, titular: e.target.value })
-                }
-              />
-
-              <label className="block text-sm text-gray-600 mt-3 mb-1">
-                Número de cuenta / Nequi / Bre-B
-              </label>
-              <input
-                className="w-full border border-gray-300 rounded-xl px-4 py-3"
-                placeholder="Ej: 3001234567"
-                value={bankData.numero}
-                onChange={(e) =>
-                  setBankData({ ...bankData, numero: e.target.value })
-                }
-              />
-
-              <div className="text-xs text-gray-400 mt-3">
-                Recibirás:{" "}
-                <span className="font-semibold text-indigo-600">
-                  {formatCOP(montoWLD * rate?.wld_cop_usuario || 0)} COP
-                </span>
-              </div>
-
-              <div className="flex gap-3 mt-4">
-                <button
-                  onClick={() => setStep(1)}
-                  className="w-1/3 border border-gray-300 py-3 rounded-xl"
+              {/* ETAPA 3 — ESTADO DE ORDEN */}
+              {step === 3 && (
+                <motion.div
+                  key="step3"
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -40 }}
+                  transition={{ duration: 0.25 }}
                 >
-                  Volver
-                </button>
-                <button
-                  onClick={handleStep2}
-                  className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold"
-                >
-                  Crear orden
-                </button>
-              </div>
-            </motion.div>
-          )}
+                  <p className="text-center text-gray-500 mb-3">
+                    Tu orden ha sido creada correctamente 🎉
+                  </p>
 
-          {/* ETAPA 3 — ESTADO DE ORDEN */}
-          {step === 3 && (
-            <motion.div
-              key="step3"
-              initial={{ opacity: 0, x: 40 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -40 }}
-              transition={{ duration: 0.25 }}
-            >
-              <p className="text-center text-gray-500 mb-3">
-                Tu orden ha sido creada correctamente 🎉
-              </p>
-
-              <div className="bg-indigo-50 p-4 rounded-2xl text-center mb-4 w-full max-w-sm mx-auto box-border">
-                <p className="text-sm text-gray-500">Orden #</p>
-                <p className="text-3xl font-bold text-indigo-700">
-                  {orderInfo?.id}
-                </p>
-
-                <p className="text-sm text-gray-500 mt-3">Estado:</p>
-                <p className="text-xl font-bold">
-                  {currentStatusLabel(orderInfo?.estado)}
-                </p>
-
-                {orderInfo && (
-                  <div className="mt-4 text-xs text-gray-600 text-left space-y-1">
-                    <p>
-                      <b>Monto:</b> {orderInfo.montoWLD} WLD →{" "}
-                      {formatCOP(orderInfo.montoCOP)} COP
-                    </p>
-                    <p>
-                      <b>Banco:</b> {orderInfo.banco}
-                    </p>
-                    <p>
-                      <b>Titular:</b> {orderInfo.titular}
-                    </p>
-                    <p>
-                      <b>Número:</b> {orderInfo.numero}
+                  <div className="bg-indigo-50 p-4 rounded-2xl text-center mb-4 w-full max-w-sm mx-auto box-border">
+                    <p className="text-sm text-gray-500">Orden #</p>
+                    <p className="text-3xl font-bold text-indigo-700">
+                      {orderInfo?.id}
                     </p>
 
-                    {orderInfo.wld_tx_id && (
-                      <div className="pt-2 text-[11px] text-gray-500">
-                        <p className="font-semibold mb-1">Tx World App:</p>
-                        <div className="font-mono bg-white/70 rounded-lg px-2 py-1 break-all leading-snug">
-                          {orderInfo.wld_tx_id}
-                        </div>
+                    <p className="text-sm text-gray-500 mt-3">Estado:</p>
+                    <p className="text-xl font-bold">
+                      {currentStatusLabel(orderInfo?.estado)}
+                    </p>
+
+                    {orderInfo && (
+                      <div className="mt-4 text-xs text-gray-600 text-left space-y-1">
+                        <p>
+                          <b>Monto:</b> {orderInfo.montoWLD} WLD →{" "}
+                          {formatCOP(orderInfo.montoCOP)} COP
+                        </p>
+                        <p>
+                          <b>Banco:</b> {orderInfo.banco}
+                        </p>
+                        <p>
+                          <b>Titular:</b> {orderInfo.titular}
+                        </p>
+                        <p>
+                          <b>Número:</b> {orderInfo.numero}
+                        </p>
+
+                        {orderInfo.wld_tx_id && (
+                          <div className="pt-2 text-[11px] text-gray-500">
+                            <p className="font-semibold mb-1">Tx World App:</p>
+                            <div className="font-mono bg-white/70 rounded-lg px-2 py-1 break-all leading-snug">
+                              {orderInfo.wld_tx_id}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              <button
-                onClick={() => {
-                  setStep(1);
-                  setMontoWLD("");
-                  setBankData({ banco: "", titular: "", numero: "" });
-                  setOrderId(null);
-                  setOrderInfo(null);
-                  setIsVerified(false);
-                  setVerificationNullifier(null);
-                  setWorldIdError(null);
-                  setWalletAddress(null);
-                  setAvailableBalance(null);
-                  setWalletError(null);
-                  setHasShownPaidAlert(false);
-                  setAutoInitDone(false);
-                  lastTxIdRef.current = null;
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-                className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
-              >
-                Crear una nueva orden
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  <button
+                    onClick={() => {
+                      setStep(1);
+                      setMontoWLD("");
+                      setBankData({ banco: "", titular: "", numero: "" });
+                      setOrderId(null);
+                      setOrderInfo(null);
+                      setIsVerified(false);
+                      setVerificationNullifier(null);
+                      setWorldIdError(null);
+                      setWalletAddress(null);
+                      setAvailableBalance(null);
+                      setWalletError(null);
+                      setHasShownPaidAlert(false);
+                      setAutoInitDone(false);
+                      lastTxIdRef.current = null;
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
+                  >
+                    Crear una nueva orden
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </>
+        ) : (
+          // ====== VISTA "BUSCAR ORDEN" ======
+          <OrderSearch
+            nullifier={verificationNullifier}
+            onBack={() => setView("main")}
+          />
+        )}
       </motion.div>
     </div>
   );
