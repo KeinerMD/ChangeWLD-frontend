@@ -1,227 +1,245 @@
 // src/components/OrderSearch.jsx
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import Swal from "sweetalert2";
 import { API_BASE } from "../apiConfig";
 
-function formatCOP(n) {
-  return Number(n || 0).toLocaleString("es-CO", { maximumFractionDigits: 0 });
-}
-
-function statusLabel(estado) {
-  switch (estado) {
-    case "pendiente":
-      return "⏳ Pendiente";
-    case "enviada":
-      return "📤 Enviada";
-    case "recibida_wld":
-      return "🟣 WLD Recibidos";
-    case "pagada":
-      return "💵 Pagada";
-    case "rechazada":
-      return "❌ Rechazada";
-    default:
-      return "⏳ Pendiente";
-  }
-}
-
-export default function OrderSearch({ verificationNullifier, onBack }) {
+export default function OrderSearch({ onBack, currentWallet }) {
   const [searchId, setSearchId] = useState("");
+  const [searching, setSearching] = useState(false);
   const [searchResult, setSearchResult] = useState(null);
   const [searchError, setSearchError] = useState(null);
 
-  const [myOrders, setMyOrders] = useState([]);
-  const [loadingMyOrders, setLoadingMyOrders] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(null);
 
-  // Cargar órdenes del usuario por nullifier
-  useEffect(() => {
-    const fetchMyOrders = async () => {
-      if (!verificationNullifier) return;
-      try {
-        setLoadingMyOrders(true);
-        const res = await axios.get(
-          `${API_BASE}/api/orders-by-nullifier`,
-          {
-            params: { nullifier: verificationNullifier },
-          }
-        );
-
-        if (res.data?.ok) {
-          setMyOrders(res.data.orders || []);
-        } else {
-          setMyOrders([]);
-        }
-      } catch (err) {
-        console.error("Error cargando órdenes del usuario:", err);
-        setMyOrders([]);
-      } finally {
-        setLoadingMyOrders(false);
-      }
-    };
-
-    fetchMyOrders();
-  }, [verificationNullifier]);
-
-  const handleSearch = async () => {
+  // 🔎 Buscar por ID (siempre disponible, con o sin wallet)
+  const handleSearchById = async () => {
     const idNumber = Number(searchId);
+
     if (!searchId || !Number.isFinite(idNumber) || idNumber <= 0) {
-      Swal.fire("ID inválido", "Ingresa un número de orden válido.", "warning");
+      setSearchError("Ingresa un número de orden válido.");
+      setSearchResult(null);
       return;
     }
 
+    setSearching(true);
+    setSearchError(null);
+    setSearchResult(null);
+
     try {
-      setSearchError(null);
-      setSearchResult(null);
       const res = await axios.get(`${API_BASE}/api/orders/${idNumber}`);
 
-      // El backend devuelve directamente la orden
-      if (res.data && !res.data.ok) {
-        setSearchError(res.data.error || "Orden no encontrada.");
+      // Éxito: el backend devuelve el documento de la orden (sin campo ok)
+      setSearchResult(res.data);
+    } catch (err) {
+      console.error("Error buscando orden por ID:", err);
+      if (err.response?.status === 404) {
+        setSearchError("Orden no encontrada. Verifica el número.");
+      } else {
+        setSearchError(
+          err.response?.data?.error ||
+            "No se pudo buscar la orden. Intenta más tarde."
+        );
+      }
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  // 📜 Cargar historial por wallet (solo si hay wallet)
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!currentWallet) {
+        setHistory([]);
+        setHistoryError(
+          "Debes estar conectado con tu World App para ver tu historial."
+        );
         return;
       }
 
-      setSearchResult(res.data);
-    } catch (err) {
-      console.error("Error buscando orden:", err);
-      if (err.response && err.response.status === 404) {
-        setSearchError("Orden no encontrada.");
-      } else {
-        setSearchError("No se pudo buscar la orden. Inténtalo más tarde.");
+      setHistoryLoading(true);
+      setHistoryError(null);
+
+      try {
+        const res = await axios.get(`${API_BASE}/api/orders-by-wallet`, {
+          params: { wallet: currentWallet },
+        });
+
+        if (res.data?.ok) {
+          setHistory(res.data.orders || []);
+        } else {
+          setHistory([]);
+          setHistoryError(
+            res.data?.error || "No se pudo cargar tu historial de órdenes."
+          );
+        }
+      } catch (err) {
+        console.error("Error cargando historial:", err);
+        setHistory([]);
+        setHistoryError(
+          err.response?.data?.error ||
+            "No se pudo cargar tu historial de órdenes."
+        );
+      } finally {
+        setHistoryLoading(false);
       }
+    };
+
+    fetchHistory();
+  }, [currentWallet]);
+
+  const formatCOP = (n) =>
+    Number(n || 0).toLocaleString("es-CO", { maximumFractionDigits: 0 });
+
+  const statusLabel = (estado) => {
+    switch (estado) {
+      case "pendiente":
+        return "⏳ Pendiente";
+      case "enviada":
+        return "📤 Enviada";
+      case "recibida_wld":
+        return "🟣 WLD Recibidos";
+      case "pagada":
+        return "💵 Pagada";
+      case "rechazada":
+        return "❌ Rechazada";
+      default:
+        return estado || "⏳ Pendiente";
     }
   };
 
   return (
     <div>
-      <h2 className="text-xl font-bold text-indigo-700 text-center mb-2">
-        🔍 Buscar orden
-      </h2>
-      <p className="text-xs text-gray-500 text-center mb-4">
-        Ingresa el número de tu orden o revisa el historial de órdenes creadas
-        con tu cuenta.
-      </p>
-
-      {/* Buscar por ID */}
+      {/* HEADER BUSCAR ORDEN */}
       <div className="mb-4">
-        <label className="block text-sm text-gray-600 mb-1">
-          Número de orden
-        </label>
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-xs text-indigo-600 underline mb-2"
+        >
+          ← Volver
+        </button>
+        <h2 className="text-lg font-semibold text-gray-800 text-center">
+          Buscar orden
+        </h2>
+        <p className="text-xs text-gray-500 text-center mt-1">
+          Ingresa el número de tu orden o revisa tus últimas transacciones.
+        </p>
+      </div>
+
+      {/* BUSCADOR POR ID */}
+      <div className="mb-5 border border-gray-200 rounded-xl p-3">
+        <p className="text-xs font-semibold text-gray-600 mb-2">
+          Buscar por número de orden
+        </p>
         <div className="flex gap-2">
           <input
             type="number"
             min="1"
-            className="flex-1 border border-gray-300 rounded-xl px-4 py-2 text-sm"
+            className="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm"
             placeholder="Ej: 15"
             value={searchId}
             onChange={(e) => setSearchId(e.target.value)}
           />
           <button
             type="button"
-            onClick={handleSearch}
+            onClick={handleSearchById}
+            disabled={searching}
             className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold"
           >
-            Buscar
+            {searching ? "Buscando..." : "Buscar"}
           </button>
         </div>
 
         {searchError && (
-          <p className="mt-2 text-xs text-red-500 text-center">
-            {searchError}
-          </p>
+          <p className="mt-2 text-xs text-red-500">{searchError}</p>
         )}
 
         {searchResult && (
-          <div className="mt-3 bg-indigo-50 rounded-2xl p-3 text-xs text-gray-700">
+          <div className="mt-3 bg-indigo-50 rounded-xl px-3 py-3 text-xs text-gray-700">
             <p className="text-[11px] text-gray-500 mb-1">
-              Resultado de búsqueda:
+              Resultado de la búsqueda
             </p>
-            <p className="text-sm font-bold text-indigo-700">
-              Orden #{searchResult.id} — {statusLabel(searchResult.estado)}
+            <p>
+              <b>Orden #</b> {searchResult.id}
             </p>
-            <div className="mt-2 space-y-1">
-              <p>
-                <b>Monto:</b> {searchResult.montoWLD} WLD →{" "}
-                {formatCOP(searchResult.montoCOP)} COP
-              </p>
-              <p>
-                <b>Banco:</b> {searchResult.banco}
-              </p>
-              <p>
-                <b>Titular:</b> {searchResult.titular}
-              </p>
-              <p>
-                <b>Número:</b> {searchResult.numero}
-              </p>
-              {searchResult.wld_tx_id && (
-                <div className="pt-1 text-[10px] text-gray-500">
-                  <p className="font-semibold mb-1">Tx World App:</p>
-                  <div className="font-mono bg-white/70 rounded-lg px-2 py-1 break-all leading-snug">
-                    {searchResult.wld_tx_id}
-                  </div>
-                </div>
-              )}
-            </div>
+            <p>
+              <b>Estado:</b> {statusLabel(searchResult.estado)}
+            </p>
+            <p>
+              <b>Monto:</b> {searchResult.montoWLD} WLD →{" "}
+              {formatCOP(searchResult.montoCOP)} COP
+            </p>
+            <p>
+              <b>Banco:</b> {searchResult.banco}
+            </p>
+            <p>
+              <b>Titular:</b> {searchResult.titular}
+            </p>
+            <p>
+              <b>Número:</b> {searchResult.numero}
+            </p>
           </div>
         )}
       </div>
 
-      {/* Historial de órdenes del usuario */}
-      <div className="mt-4">
-        <p className="text-sm font-semibold text-gray-700 mb-1">
+      {/* HISTORIAL POR WALLET */}
+      <div className="border border-gray-200 rounded-xl p-3">
+        <p className="text-xs font-semibold text-gray-600 mb-2">
           Tus últimas órdenes
         </p>
 
-        {!verificationNullifier && (
-          <p className="text-xs text-gray-400">
-            Debes estar conectado con World App para ver tu historial de
-            órdenes.
+        {!currentWallet && (
+          <p className="text-xs text-red-500">
+            Debes estar conectado con tu World App para ver tu historial.
           </p>
         )}
 
-        {verificationNullifier && loadingMyOrders && (
-          <p className="text-xs text-gray-500">Cargando historial...</p>
-        )}
+        {currentWallet && (
+          <>
+            {historyLoading && (
+              <p className="text-xs text-gray-500">Cargando historial...</p>
+            )}
 
-        {verificationNullifier && !loadingMyOrders && myOrders.length === 0 && (
-          <p className="text-xs text-gray-400">
-            No hemos encontrado órdenes asociadas a tu cuenta todavía.
-          </p>
-        )}
+            {historyError && (
+              <p className="text-xs text-red-500 mt-1">{historyError}</p>
+            )}
 
-        {verificationNullifier &&
-          !loadingMyOrders &&
-          myOrders.length > 0 && (
-            <div className="mt-2 max-h-72 overflow-y-auto space-y-2">
-              {myOrders.map((o) => (
-                <div
-                  key={o.id}
-                  className="border border-gray-200 rounded-xl p-2 text-xs bg-white"
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold text-indigo-700">
-                      #{o.id}
-                    </span>
-                    <span>{statusLabel(o.estado)}</span>
+            {!historyLoading && !historyError && history.length === 0 && (
+              <p className="text-xs text-gray-500">
+                No tienes órdenes registradas con esta cuenta todavía.
+              </p>
+            )}
+
+            {!historyLoading && history.length > 0 && (
+              <div className="mt-2 space-y-2 max-h-56 overflow-y-auto">
+                {history.map((o) => (
+                  <div
+                    key={o.id}
+                    className="bg-slate-50 rounded-lg px-3 py-2 text-[11px]"
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-gray-800">
+                        Orden #{o.id}
+                      </span>
+                      <span className="text-[10px]">
+                        {statusLabel(o.estado)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-gray-600">
+                      {o.montoWLD} WLD → {formatCOP(o.montoCOP)} COP
+                    </p>
+                    <p className="text-gray-500">
+                      {o.banco} · {o.titular}
+                    </p>
                   </div>
-                  <p className="mt-1">
-                    {o.montoWLD} WLD → {formatCOP(o.montoCOP)} COP
-                  </p>
-                  <p className="text-[11px] text-gray-500">
-                    {o.banco} · {o.titular}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
-
-      <button
-        type="button"
-        onClick={onBack}
-        className="mt-5 w-full border border-gray-300 py-3 rounded-xl text-sm"
-      >
-        Volver a crear una orden
-      </button>
     </div>
   );
 }
