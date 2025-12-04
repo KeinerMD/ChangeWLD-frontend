@@ -5,9 +5,9 @@ import { API_BASE } from "./apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
 import BankSelector from "./components/BankSelector";
+import OrderSearch from "./components/OrderSearch";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { WLD_ABI } from "./wldAbi";
-import OrderSearch from "./OrderSearch";
 
 // Helper: convierte "3.125" a uint256 con 18 decimales (BigInt → string)
 function toTokenUnits(amountStr, decimals = 18) {
@@ -30,7 +30,7 @@ async function waitForMiniKit(maxAttempts = 15, delayMs = 200) {
 }
 
 function App() {
-  const [view, setView] = useState("main"); // "main" | "buscar"
+  const [screen, setScreen] = useState("main"); // "main" | "search"
 
   const [step, setStep] = useState(1);
   const [rate, setRate] = useState(null);
@@ -166,7 +166,7 @@ function App() {
       }
 
       try {
-        // 1️⃣ Verificar World ID
+        //1️⃣ Verificar World ID
         const { finalPayload } = await MiniKit.commandsAsync.verify({
           action: "verify-changewld-v2",
           signal: "changewld-device",
@@ -487,7 +487,7 @@ function App() {
         animate={{ opacity: 1, y: 0 }}
         className="bg-white shadow-2xl rounded-3xl p-7 w-full max-w-md box-border"
       >
-        {/* HEADER (COMÚN A TODAS LAS VISTAS) */}
+        {/* HEADER */}
         <div className="mb-5 text-center">
           <h1 className="text-3xl font-bold text-indigo-700 mb-1">
             💱 ChangeWLD
@@ -497,9 +497,9 @@ function App() {
           </p>
         </div>
 
-        {view === "main" ? (
+        {screen === "main" ? (
           <>
-            {/* STEPPER SOLO EN VISTA PRINCIPAL */}
+            {/* STEPPER */}
             <div className="flex items-center justify-between mb-6">
               {[1, 2, 3].map((s) => (
                 <div key={s} className="flex-1 flex flex-col items-center">
@@ -525,7 +525,7 @@ function App() {
 
             {/* CONTENIDO */}
             <AnimatePresence mode="wait">
-              {/* ETAPA 1 — MONTO */}
+              {/* ETAPA 1 — MONTO + AUTO WORLD ID + AUTO WALLET */}
               {step === 1 && (
                 <motion.div
                   key="step1"
@@ -555,10 +555,7 @@ function App() {
                       <button
                         type="button"
                         onClick={() => {
-                          if (
-                            availableBalance != null &&
-                            availableBalance > 0
-                          ) {
+                          if (availableBalance != null && availableBalance > 0) {
                             setMontoWLD(String(availableBalance));
                           }
                         }}
@@ -583,49 +580,38 @@ function App() {
                     )}
                   </div>
 
-                  {/* TARJETA SIN "TASA ACTUAL" NI TEXTO DE 60s */}
+                  {/* SOLO Recibirías, sin tasa visible */}
                   <div className="bg-indigo-50 p-4 rounded-xl text-center">
-                    <p className="text-xs text-gray-500 mt-1">Recibirías:</p>
+                    <p className="text-xs text-gray-500">
+                      Recibirías aproximadamente:
+                    </p>
                     <p className="text-2xl font-extrabold text-indigo-700">
                       {recibiriasTexto}
                     </p>
                   </div>
 
-                  {/* ESTADOS DE WORLD ID Y BILLETERA (sin botones) */}
+                  {/* Estado combinado de conexión */}
                   <div className="mt-4 text-xs text-center">
-                    <p>
-                      Estado verificación World ID:{" "}
-                      {isVerified ? (
-                        <span className="text-emerald-600 font-semibold">
-                          ✔ Verificado
-                        </span>
-                      ) : worldIdError ? (
-                        <span className="text-red-500 font-semibold">
-                          {worldIdError}
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">Conectando...</span>
-                      )}
-                    </p>
-
-                    <p className="mt-2">
-                      Billetera:{" "}
-                      {walletAddress ? (
-                        <span className="font-mono text-[11px] text-indigo-700">
-                          {walletAddress.slice(0, 6)}...
-                          {walletAddress.slice(-4)}
-                        </span>
-                      ) : walletError ? (
-                        <span className="text-red-500 font-semibold">
-                          {walletError}
-                        </span>
-                      ) : (
-                        <span className="text-gray-500">Conectando...</span>
-                      )}
-                    </p>
+                    {walletAddress && isVerified ? (
+                      <span className="text-emerald-600 font-semibold">
+                        ✅ Conectado a World App (
+                        {walletAddress.slice(0, 6)}...
+                        {walletAddress.slice(-4)}
+                        )
+                      </span>
+                    ) : worldIdError || walletError ? (
+                      <span className="text-red-500 font-semibold">
+                        No se pudo conectar con World App. Cierra y vuelve a
+                        abrir ChangeWLD.
+                      </span>
+                    ) : (
+                      <span className="text-gray-500 font-semibold">
+                        Conectando con World App...
+                      </span>
+                    )}
                   </div>
 
-                  {/* Mensajes en rojo como en tu diseño */}
+                  {/* Mensajes en rojo como en tus screenshots */}
                   {worldIdError && (
                     <p className="mt-3 text-xs text-center text-red-500">
                       No se pudo verificar tu World ID. Cierra y vuelve a abrir
@@ -651,13 +637,13 @@ function App() {
                     Continuar
                   </button>
 
-                  {/* NUEVO BOTÓN: BUSCAR ORDEN */}
+                  {/* Botón Buscar orden */}
                   <button
                     type="button"
-                    onClick={() => setView("buscar")}
-                    className="mt-2 w-full py-3 rounded-xl border border-indigo-200 text-indigo-700 text-sm font-semibold bg-indigo-50"
+                    onClick={() => setScreen("search")}
+                    className="mt-2 w-full py-3 rounded-xl border border-indigo-200 text-indigo-700 font-semibold bg-white"
                   >
-                    Buscar orden
+                    Buscar orden 🔍
                   </button>
                 </motion.div>
               )}
@@ -785,6 +771,7 @@ function App() {
 
                   <button
                     onClick={() => {
+                      setScreen("main");
                       setStep(1);
                       setMontoWLD("");
                       setBankData({ banco: "", titular: "", numero: "" });
@@ -805,15 +792,26 @@ function App() {
                   >
                     Crear una nueva orden
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setScreen("search")}
+                    className="mt-2 w-full py-3 rounded-xl border border-indigo-200 text-indigo-700 font-semibold bg-white"
+                  >
+                    Ver / buscar mis órdenes 🔍
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
           </>
         ) : (
-          // ====== VISTA "BUSCAR ORDEN" ======
+          // PANTALLA DE BÚSQUEDA
           <OrderSearch
-            nullifier={verificationNullifier}
-            onBack={() => setView("main")}
+            verificationNullifier={verificationNullifier}
+            onBack={() => {
+              setScreen("main");
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
           />
         )}
       </motion.div>
