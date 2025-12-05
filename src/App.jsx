@@ -35,7 +35,7 @@ async function waitForMiniKit(maxAttempts = 15, delayMs = 200) {
 // 🔎 Términos y condiciones (texto dentro del modal)
 function TermsContent() {
   return (
-    <div className="text-xs text-gray-700 space-y-3">
+    <div className="text-xs text-gray-200 space-y-3">
       <p>
         <strong>1. Quiénes somos</strong>
         <br />
@@ -179,7 +179,7 @@ function App() {
     "Hola, necesito ayuda con mi orden en ChangeWLD."
   )}`;
 
-    // 👉 Derivados del monto para validación visual
+  // 👉 Derivados del monto para validación visual
   const montoNumber = Number(montoWLD || 0);
   const hasBalanceInfo =
     walletAddress && availableBalance != null && !Number.isNaN(availableBalance);
@@ -188,10 +188,9 @@ function App() {
   const isAboveBalance =
     hasBalanceInfo && montoNumber > 0 && montoNumber > availableBalance;
 
-      // 👉 Flags según el banco seleccionado
+  // 👉 Flags según el banco seleccionado
   const isNequi = bankData.banco === "Nequi";
   const isLlaveBreB = bankData.banco === "Llave Bre-B";
-
 
   // ========= ENVÍO DE WLD (sendTransaction) =========
   const sendWldToDestination = async (amountWLD) => {
@@ -441,6 +440,24 @@ function App() {
       return;
     }
 
+    if (isBelowMin) {
+      Swal.fire(
+        "Monto mínimo",
+        "El monto mínimo por orden es de 1 WLD.",
+        "warning"
+      );
+      return;
+    }
+
+    if (isAboveBalance) {
+      Swal.fire(
+        "Saldo insuficiente",
+        "El monto ingresado es mayor a tu saldo disponible.",
+        "warning"
+      );
+      return;
+    }
+
     if (!isVerified || !verificationNullifier || !walletAddress) {
       Swal.fire(
         "Conexión requerida",
@@ -562,7 +579,7 @@ function App() {
       ? `${formatCOP(montoWLD * rate.wld_cop_usuario)} COP`
       : "0 COP";
 
-    const continuarDisabled =
+  const continuarDisabled =
     !montoWLD ||
     Number.isNaN(montoNumber) ||
     montoNumber <= 0 ||
@@ -575,18 +592,18 @@ function App() {
 
   // ========= UI PRINCIPAL =========
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-100 to-slate-200 flex justify-center items-start px-4 py-6">
+    <div className="min-h-screen bg-black flex justify-center items-start px-4 py-6">
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white shadow-2xl rounded-3xl p-7 w-full max-w-md box-border"
+        className="bg-neutral-900 shadow-2xl rounded-3xl p-7 w-full max-w-md box-border border border-yellow-500/20"
       >
         {/* HEADER */}
         <div className="mb-5 text-center">
-          <h1 className="text-3xl font-bold text-indigo-700 mb-1">
+          <h1 className="text-3xl font-bold text-yellow-400 mb-1">
             💱 ChangeWLD
           </h1>
-          <p className="text-xs text-gray-400 uppercase tracking-widest">
+          <p className="text-xs text-gray-300 uppercase tracking-widest">
             Cambia tus WLD a COP de forma segura
           </p>
         </div>
@@ -605,15 +622,15 @@ function App() {
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                       step === s
-                        ? "bg-indigo-600 text-white"
+                        ? "bg-yellow-400 text-black"
                         : step > s
-                        ? "bg-emerald-500 text-white"
-                        : "bg-gray-200 text-gray-500"
+                        ? "bg-green-500 text-black"
+                        : "bg-neutral-700 text-gray-400"
                     }`}
                   >
                     {s}
                   </div>
-                  <p className="text-[10px] text-gray-500 mt-1">
+                  <p className="text-[10px] text-gray-300 mt-1">
                     {s === 1 && "Monto"}
                     {s === 2 && "Datos Bancarios"}
                     {s === 3 && "Estado"}
@@ -632,12 +649,21 @@ function App() {
                   exit={{ opacity: 0, x: -40 }}
                   transition={{ duration: 0.25 }}
                 >
-                  <p className="text-center text-gray-500 mb-4">
+                  {/* Aviso de límite diario */}
+                  <div className="mb-3 rounded-xl border border-yellow-500/60 bg-yellow-500/10 px-3 py-2 text-[11px] text-yellow-200 text-center">
+                    Puedes crear hasta{" "}
+                    <span className="font-bold text-yellow-300">
+                      3 órdenes por día
+                    </span>{" "}
+                    con tu cuenta de World App.
+                  </div>
+
+                  <p className="text-center text-gray-300 mb-4">
                     Ingresa cuántos <b>WLD</b> quieres cambiar.
                   </p>
 
                   <div className="mb-3">
-                    <label className="block text-sm text-gray-600 mb-1">
+                    <label className="block text-sm text-gray-200 mb-1">
                       Monto en WLD (mínimo 1 WLD)
                     </label>
                     <div className="flex gap-2">
@@ -645,9 +671,11 @@ function App() {
                         type="number"
                         min="0"
                         step="0.0001"
-                          className={`flex-1 rounded-xl px-4 py-3 border ${
-    isBelowMin || isAboveBalance ? "border-red-400" : "border-gray-300"
-  }`}
+                        className={`flex-1 rounded-xl px-4 py-3 border bg-neutral-900 text-white placeholder:text-gray-500 ${
+                          isBelowMin || isAboveBalance
+                            ? "border-red-500"
+                            : "border-neutral-700"
+                        }`}
                         placeholder="Ej: 12.5"
                         value={montoWLD}
                         onChange={(e) => setMontoWLD(e.target.value)}
@@ -662,7 +690,7 @@ function App() {
                             setMontoWLD(String(availableBalance));
                           }
                         }}
-                        className="px-3 py-2 text-xs font-semibold border border-indigo-300 text-indigo-700 rounded-xl whitespace-nowrap"
+                        className="px-3 py-2 text-xs font-semibold border border-yellow-500 text-yellow-300 rounded-xl whitespace-nowrap bg-neutral-900 disabled:opacity-50"
                         disabled={
                           availableBalance == null ||
                           availableBalance <= 0 ||
@@ -674,45 +702,44 @@ function App() {
                     </div>
 
                     {walletAddress && availableBalance != null && (
-  <>
-    <p className="mt-1 text-xs text-gray-500">
-      Saldo disponible:{" "}
-      <span className="font-semibold text-indigo-600">
-        {availableBalance.toFixed(4)} WLD
-      </span>
-    </p>
+                      <>
+                        <p className="mt-1 text-xs text-gray-300">
+                          Saldo disponible:{" "}
+                          <span className="font-semibold text-yellow-300">
+                            {availableBalance.toFixed(4)} WLD
+                          </span>
+                        </p>
 
-    {isAboveBalance && (
-      <p className="mt-1 text-xs text-red-500">
-        Saldo insuficiente para este monto.
-      </p>
-    )}
+                        {isAboveBalance && (
+                          <p className="mt-1 text-xs text-red-500">
+                            Saldo insuficiente para este monto.
+                          </p>
+                        )}
 
-    {!isAboveBalance && isBelowMin && (
-      <p className="mt-1 text-xs text-red-500">
-        El monto mínimo por orden es de 1 WLD.
-      </p>
-    )}
-  </>
-)}
-
+                        {!isAboveBalance && isBelowMin && (
+                          <p className="mt-1 text-xs text-red-500">
+                            El monto mínimo por orden es de 1 WLD.
+                          </p>
+                        )}
+                      </>
+                    )}
                   </div>
 
-                  <div className="bg-indigo-50 p-4 rounded-xl text-center">
-                    <p className="text-xs text-gray-500">
+                  <div className="bg-neutral-800 border border-yellow-500/40 p-4 rounded-xl text-center">
+                    <p className="text-xs text-gray-300">
                       Recibirías aproximadamente:
                     </p>
-                    <p className="text-2xl font-extrabold text-indigo-700">
+                    <p className="text-2xl font-extrabold text-yellow-300">
                       {recibiriasTexto}
                     </p>
                   </div>
 
                   {/* Estado único de conexión (SIN mostrar address) */}
                   <div className="mt-4 text-xs text-center">
-                    <p>
+                    <p className="text-gray-300">
                       Estado de conexión:{" "}
                       {isVerified ? (
-                        <span className="text-emerald-600 font-semibold">
+                        <span className="text-green-400 font-semibold">
                           ✔ Cuenta de World App conectada
                         </span>
                       ) : authError ? (
@@ -720,11 +747,11 @@ function App() {
                           {authError}
                         </span>
                       ) : authLoading ? (
-                        <span className="text-indigo-600 font-semibold">
+                        <span className="text-yellow-300 font-semibold">
                           Conectando con tu World App...
                         </span>
                       ) : (
-                        <span className="text-gray-500">
+                        <span className="text-gray-400">
                           Preparando conexión con World App...
                         </span>
                       )}
@@ -743,8 +770,8 @@ function App() {
                     disabled={continuarDisabled}
                     className={`mt-4 w-full py-3 rounded-xl font-semibold ${
                       continuarDisabled
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : "bg-indigo-600 text-white"
+                        ? "bg-neutral-700 text-gray-500 cursor-not-allowed"
+                        : "bg-yellow-400 text-black hover:bg-yellow-500"
                     }`}
                   >
                     Continuar
@@ -754,19 +781,19 @@ function App() {
                   <button
                     type="button"
                     onClick={() => setView("search")}
-                    className="mt-2 w-full py-3 rounded-xl border border-indigo-200 text-indigo-700 font-semibold bg-white"
+                    className="mt-2 w-full py-3 rounded-xl border border-yellow-500/40 text-yellow-300 font-semibold bg-neutral-900"
                   >
                     Buscar orden
                   </button>
 
                   {/* Términos + soporte */}
-                  <div className="mt-3 text-[11px] text-center text-gray-500 space-y-1">
+                  <div className="mt-3 text-[11px] text-center text-gray-400 space-y-1">
                     <p>
                       Al continuar aceptas los{" "}
                       <button
                         type="button"
                         onClick={() => setShowTerms(true)}
-                        className="underline text-indigo-600"
+                        className="underline text-yellow-300"
                       >
                         Términos y Condiciones
                       </button>{" "}
@@ -778,7 +805,7 @@ function App() {
                         href={supportLink}
                         target="_blank"
                         rel="noreferrer"
-                        className="font-semibold text-emerald-600"
+                        className="font-semibold text-green-400"
                       >
                         Contactar soporte por WhatsApp
                       </a>
@@ -796,24 +823,27 @@ function App() {
                   exit={{ opacity: 0, x: -40 }}
                   transition={{ duration: 0.25 }}
                 >
-                      {/* Aviso destacado de verificación de datos */}
-                <div className="mb-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-900">
-                  <p className="font-semibold">
-                    🔔 Verifica tus datos antes de confirmar
-                  </p>
-                  <p className="mt-1">
-                    Asegúrate de que tu número de Nequi o tu llave Bre-B sean correctos.{" "}
-                    <span className="font-semibold">
-                      ChangeWLD no se hace responsable por pagos enviados a cuentas o
-                      llaves ingresadas de forma incorrecta por el usuario.
-                    </span>
-                  </p>
-                </div>
-                  <p className="text-center text-gray-500 mb-4">
+                  {/* Aviso destacado de verificación de datos */}
+                  <div className="mb-3 rounded-xl bg-yellow-500/10 border border-yellow-500/60 px-3 py-2 text-[11px] text-yellow-200">
+                    <p className="font-semibold">
+                      🔔 Verifica tus datos antes de confirmar
+                    </p>
+                    <p className="mt-1">
+                      Asegúrate de que tu número de Nequi o tu llave Bre-B sean
+                      correctos.{" "}
+                      <span className="font-semibold">
+                        ChangeWLD no se hace responsable por pagos enviados a
+                        cuentas o llaves ingresadas de forma incorrecta por el
+                        usuario.
+                      </span>
+                    </p>
+                  </div>
+
+                  <p className="text-center text-gray-300 mb-4">
                     Ingresa los datos donde recibirás los COP.
                   </p>
 
-                  <label className="block text-sm text-gray-600 mb-1">
+                  <label className="block text-sm text-gray-200 mb-1">
                     Banco o billetera
                   </label>
                   <BankSelector
@@ -821,11 +851,11 @@ function App() {
                     onChange={(b) => setBankData({ ...bankData, banco: b })}
                   />
 
-                  <label className="block text-sm text-gray-600 mt-3 mb-1">
+                  <label className="block text-sm text-gray-200 mt-3 mb-1">
                     Titular de la cuenta
                   </label>
                   <input
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3"
+                    className="w-full border border-neutral-700 bg-neutral-900 text-white placeholder:text-gray-500 rounded-xl px-4 py-3"
                     placeholder="Nombre del titular"
                     value={bankData.titular}
                     onChange={(e) =>
@@ -833,67 +863,69 @@ function App() {
                     }
                   />
 
-                  <label className="block text-sm text-gray-600 mt-3 mb-1">
-  {isLlaveBreB ? "Ingresar Llave Bre-B" : "Número de Nequi"}
-</label>
+                  <label className="block text-sm text-gray-200 mt-3 mb-1">
+                    {isLlaveBreB ? "Ingresar Llave Bre-B" : "Número de Nequi"}
+                  </label>
                   <input
-  type={isNequi ? "tel" : "text"}
-  className="w-full border border-gray-300 rounded-xl px-4 py-3"
-  placeholder={isNequi ? "Ej: 3001234567" : "Ej: tu llave Bre-B"}
-  value={bankData.numero}
-  onChange={(e) => {
-    let value = e.target.value;
-    if (isNequi) {
-      // Solo números y máximo 10 dígitos
-      value = value.replace(/\D/g, "").slice(0, 10);
-    }
-    setBankData({ ...bankData, numero: value });
-  }}
-/>
+                    type={isNequi ? "tel" : "text"}
+                    className="w-full border border-neutral-700 bg-neutral-900 text-white placeholder:text-gray-500 rounded-xl px-4 py-3"
+                    placeholder={
+                      isNequi ? "Ej: 3001234567" : "Ej: tu llave Bre-B"
+                    }
+                    value={bankData.numero}
+                    onChange={(e) => {
+                      let value = e.target.value;
+                      if (isNequi) {
+                        // Solo números y máximo 10 dígitos
+                        value = value.replace(/\D/g, "").slice(0, 10);
+                      }
+                      setBankData({ ...bankData, numero: value });
+                    }}
+                  />
 
-{isNequi && bankData.numero && bankData.numero.length < 10 && (
-  <p className="mt-1 text-xs text-red-500">
-    El número de Nequi debe tener 10 dígitos.
-  </p>
-)}
+                  {isNequi && bankData.numero && bankData.numero.length < 10 && (
+                    <p className="mt-1 text-xs text-red-500">
+                      El número de Nequi debe tener 10 dígitos.
+                    </p>
+                  )}
 
-{isLlaveBreB && (
-  <p className="mt-1 text-xs text-gray-500">
-    Escribe tu llave exactamente como está registrada en Llave Bre-B.
-  </p>
-)}
+                  {isLlaveBreB && (
+                    <p className="mt-1 text-xs text-gray-300">
+                      Escribe tu llave exactamente como está registrada en
+                      Llave Bre-B.
+                    </p>
+                  )}
 
-<div className="text-xs text-gray-400 mt-3">
-  Recibirás:{" "}
-  <span className="font-semibold text-indigo-600">
-    {formatCOP(montoWLD * rate?.wld_cop_usuario || 0)} COP
-  </span>
-</div>
+                  <div className="text-xs text-gray-300 mt-3">
+                    Recibirás:{" "}
+                    <span className="font-semibold text-yellow-300">
+                      {formatCOP(montoWLD * rate?.wld_cop_usuario || 0)} COP
+                    </span>
+                  </div>
 
-<p className="mt-3 text-[11px] text-gray-500">
-  Al crear tu orden aceptas los{" "}
-  <button
-    type="button"
-    onClick={() => setShowTerms(true)}
-    className="underline text-indigo-600"
-  >
-    Términos y Condiciones
-  </button>{" "}
-  de ChangeWLD y autorizas el uso de tus datos para procesar
-  esta transacción.
-</p>
-
+                  <p className="mt-3 text-[11px] text-gray-400">
+                    Al crear tu orden aceptas los{" "}
+                    <button
+                      type="button"
+                      onClick={() => setShowTerms(true)}
+                      className="underline text-yellow-300"
+                    >
+                      Términos y Condiciones
+                    </button>{" "}
+                    de ChangeWLD y autorizas el uso de tus datos para procesar
+                    esta transacción.
+                  </p>
 
                   <div className="flex gap-3 mt-4">
                     <button
                       onClick={() => setStep(1)}
-                      className="w-1/3 border border-gray-300 py-3 rounded-xl"
+                      className="w-1/3 border border-neutral-600 text-gray-200 py-3 rounded-xl"
                     >
                       Volver
                     </button>
                     <button
                       onClick={handleStep2}
-                      className="w-2/3 bg-indigo-600 text-white py-3 rounded-xl font-semibold"
+                      className="w-2/3 bg-green-500 text-black py-3 rounded-xl font-semibold hover:bg-green-400"
                     >
                       Crear orden
                     </button>
@@ -910,23 +942,23 @@ function App() {
                   exit={{ opacity: 0, x: -40 }}
                   transition={{ duration: 0.25 }}
                 >
-                  <p className="text-center text-gray-500 mb-3">
+                  <p className="text-center text-gray-300 mb-3">
                     Tu orden ha sido creada correctamente 🎉
                   </p>
 
-                  <div className="bg-indigo-50 p-4 rounded-2xl text-center mb-4 w-full max-w-sm mx-auto box-border">
-                    <p className="text-sm text-gray-500">Orden #</p>
-                    <p className="text-3xl font-bold text-indigo-700">
+                  <div className="bg-neutral-800 border border-yellow-500/40 p-4 rounded-2xl text-center mb-4 w-full max-w-sm mx-auto box-border">
+                    <p className="text-sm text-gray-300">Orden #</p>
+                    <p className="text-3xl font-bold text-yellow-300">
                       {orderInfo?.id}
                     </p>
 
-                    <p className="text-sm text-gray-500 mt-3">Estado:</p>
-                    <p className="text-xl font-bold">
+                    <p className="text-sm text-gray-300 mt-3">Estado:</p>
+                    <p className="text-xl font-bold text-gray-100">
                       {currentStatusLabel(orderInfo?.estado)}
                     </p>
 
                     {orderInfo && (
-                      <div className="mt-4 text-xs text-gray-600 text-left space-y-1">
+                      <div className="mt-4 text-xs text-gray-200 text-left space-y-1">
                         <p>
                           <b>Monto:</b> {orderInfo.montoWLD} WLD →{" "}
                           {formatCOP(orderInfo.montoCOP)} COP
@@ -942,9 +974,9 @@ function App() {
                         </p>
 
                         {orderInfo.wld_tx_id && (
-                          <div className="pt-2 text-[11px] text-gray-500">
+                          <div className="pt-2 text-[11px] text-gray-400">
                             <p className="font-semibold mb-1">Tx World App:</p>
-                            <div className="font-mono bg-white/70 rounded-lg px-2 py-1 break-all leading-snug">
+                            <div className="font-mono bg-neutral-900 rounded-lg px-2 py-1 break-all leading-snug text-gray-200">
                               {orderInfo.wld_tx_id}
                             </div>
                           </div>
@@ -970,7 +1002,7 @@ function App() {
                       lastTxIdRef.current = null;
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className="mt-3 w-full border border-gray-300 py-3 rounded-xl"
+                    className="mt-3 w-full border border-neutral-600 text-gray-200 py-3 rounded-xl"
                   >
                     Crear una nueva orden
                   </button>
@@ -982,15 +1014,15 @@ function App() {
 
         {/* MODAL TÉRMINOS Y CONDICIONES */}
         {showTerms && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-            <div className="bg-white rounded-2xl max-h-[80vh] w-full max-w-md p-4 overflow-y-auto">
-              <h2 className="text-base font-bold mb-2 text-gray-800">
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+            <div className="bg-neutral-900 text-gray-100 rounded-2xl max-h-[80vh] w-full max-w-md p-4 overflow-y-auto border border-yellow-500/30">
+              <h2 className="text-base font-bold mb-2 text-gray-100">
                 Términos y Condiciones de ChangeWLD
               </h2>
               <TermsContent />
               <button
                 onClick={() => setShowTerms(false)}
-                className="mt-4 w-full bg-indigo-600 text-white py-2 rounded-xl text-sm font-semibold"
+                className="mt-4 w-full bg-yellow-400 text-black py-2 rounded-xl text-sm font-semibold hover:bg-yellow-500"
               >
                 Cerrar
               </button>
