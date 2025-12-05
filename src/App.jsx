@@ -188,6 +188,10 @@ function App() {
   const isAboveBalance =
     hasBalanceInfo && montoNumber > 0 && montoNumber > availableBalance;
 
+      // 👉 Flags según el banco seleccionado
+  const isNequi = bankData.banco === "Nequi";
+  const isLlaveBreB = bankData.banco === "Llave Bre-B";
+
 
   // ========= ENVÍO DE WLD (sendTransaction) =========
   const sendWldToDestination = async (amountWLD) => {
@@ -453,6 +457,15 @@ function App() {
   const handleStep2 = async () => {
     if (!bankData.banco || !bankData.titular || !bankData.numero) {
       Swal.fire("Campos incompletos", "Llena todos los campos.", "warning");
+      return;
+    }
+
+    if (isNequi && bankData.numero.replace(/\D/g, "").length !== 10) {
+      Swal.fire(
+        "Número de Nequi inválido",
+        "Tu número de Nequi debe tener exactamente 10 dígitos. Verifícalo antes de continuar.",
+        "warning"
+      );
       return;
     }
 
@@ -808,36 +821,64 @@ function App() {
                   />
 
                   <label className="block text-sm text-gray-600 mt-3 mb-1">
-                    Número de cuenta / Nequi / Bre-B
-                  </label>
+  {isLlaveBreB ? "Ingresar Llave Bre-B" : "Número de Nequi"}
+</label>
                   <input
-                    className="w-full border border-gray-300 rounded-xl px-4 py-3"
-                    placeholder="Ej: 3001234567"
-                    value={bankData.numero}
-                    onChange={(e) =>
-                      setBankData({ ...bankData, numero: e.target.value })
-                    }
-                  />
+  type={isNequi ? "tel" : "text"}
+  className="w-full border border-gray-300 rounded-xl px-4 py-3"
+  placeholder={isNequi ? "Ej: 3001234567" : "Ej: tu llave Bre-B"}
+  value={bankData.numero}
+  onChange={(e) => {
+    let value = e.target.value;
+    if (isNequi) {
+      // Solo números y máximo 10 dígitos
+      value = value.replace(/\D/g, "").slice(0, 10);
+    }
+    setBankData({ ...bankData, numero: value });
+  }}
+/>
 
-                  <div className="text-xs text-gray-400 mt-3">
-                    Recibirás:{" "}
-                    <span className="font-semibold text-indigo-600">
-                      {formatCOP(montoWLD * rate?.wld_cop_usuario || 0)} COP
-                    </span>
-                  </div>
+{isNequi && bankData.numero && bankData.numero.length < 10 && (
+  <p className="mt-1 text-xs text-red-500">
+    El número de Nequi debe tener 10 dígitos.
+  </p>
+)}
 
-                  <p className="mt-3 text-[11px] text-gray-500">
-                    Al crear tu orden aceptas los{" "}
-                    <button
-                      type="button"
-                      onClick={() => setShowTerms(true)}
-                      className="underline text-indigo-600"
-                    >
-                      Términos y Condiciones
-                    </button>{" "}
-                    de ChangeWLD y autorizas el uso de tus datos para procesar
-                    esta transacción.
-                  </p>
+{isLlaveBreB && (
+  <p className="mt-1 text-xs text-gray-500">
+    Escribe tu llave exactamente como está registrada en Llave Bre-B.
+  </p>
+)}
+
+<div className="text-xs text-gray-400 mt-3">
+  Recibirás:{" "}
+  <span className="font-semibold text-indigo-600">
+    {formatCOP(montoWLD * rate?.wld_cop_usuario || 0)} COP
+  </span>
+</div>
+
+<p className="mt-2 text-[11px] text-gray-500">
+  Antes de confirmar, verifica cuidadosamente que tu número de Nequi o tu
+  llave Bre-B sean correctos.{" "}
+  <span className="font-semibold">
+    ChangeWLD no se hace responsable por pagos enviados a cuentas o llaves
+    ingresadas de forma incorrecta por el usuario.
+  </span>
+</p>
+
+<p className="mt-3 text-[11px] text-gray-500">
+  Al crear tu orden aceptas los{" "}
+  <button
+    type="button"
+    onClick={() => setShowTerms(true)}
+    className="underline text-indigo-600"
+  >
+    Términos y Condiciones
+  </button>{" "}
+  de ChangeWLD y autorizas el uso de tus datos para procesar
+  esta transacción.
+</p>
+
 
                   <div className="flex gap-3 mt-4">
                     <button
