@@ -179,6 +179,16 @@ function App() {
     "Hola, necesito ayuda con mi orden en ChangeWLD."
   )}`;
 
+    // 👉 Derivados del monto para validación visual
+  const montoNumber = Number(montoWLD || 0);
+  const hasBalanceInfo =
+    walletAddress && availableBalance != null && !Number.isNaN(availableBalance);
+
+  const isBelowMin = montoNumber > 0 && montoNumber < 1; // >0 y <1 → mínimo 1 WLD
+  const isAboveBalance =
+    hasBalanceInfo && montoNumber > 0 && montoNumber > availableBalance;
+
+
   // ========= ENVÍO DE WLD (sendTransaction) =========
   const sendWldToDestination = async (amountWLD) => {
     if (!MiniKit.isInstalled()) {
@@ -539,9 +549,12 @@ function App() {
       ? `${formatCOP(montoWLD * rate.wld_cop_usuario)} COP`
       : "0 COP";
 
-  const continuarDisabled =
+    const continuarDisabled =
     !montoWLD ||
-    Number(montoWLD) <= 0 ||
+    Number.isNaN(montoNumber) ||
+    montoNumber <= 0 ||
+    isBelowMin ||
+    isAboveBalance ||
     !rate?.wld_cop_usuario ||
     !isVerified ||
     !verificationNullifier ||
@@ -619,7 +632,9 @@ function App() {
                         type="number"
                         min="0"
                         step="0.0001"
-                        className="flex-1 border border-gray-300 rounded-xl px-4 py-3"
+                          className={`flex-1 rounded-xl px-4 py-3 border ${
+    isBelowMin || isAboveBalance ? "border-red-400" : "border-gray-300"
+  }`}
                         placeholder="Ej: 12.5"
                         value={montoWLD}
                         onChange={(e) => setMontoWLD(e.target.value)}
@@ -646,13 +661,28 @@ function App() {
                     </div>
 
                     {walletAddress && availableBalance != null && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        Saldo disponible:{" "}
-                        <span className="font-semibold text-indigo-600">
-                          {availableBalance.toFixed(4)} WLD
-                        </span>
-                      </p>
-                    )}
+  <>
+    <p className="mt-1 text-xs text-gray-500">
+      Saldo disponible:{" "}
+      <span className="font-semibold text-indigo-600">
+        {availableBalance.toFixed(4)} WLD
+      </span>
+    </p>
+
+    {isAboveBalance && (
+      <p className="mt-1 text-xs text-red-500">
+        Saldo insuficiente para este monto.
+      </p>
+    )}
+
+    {!isAboveBalance && isBelowMin && (
+      <p className="mt-1 text-xs text-red-500">
+        El monto mínimo por orden es de 1 WLD.
+      </p>
+    )}
+  </>
+)}
+
                   </div>
 
                   <div className="bg-indigo-50 p-4 rounded-xl text-center">
