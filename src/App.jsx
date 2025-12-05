@@ -796,6 +796,19 @@ function App() {
                   exit={{ opacity: 0, x: -40 }}
                   transition={{ duration: 0.25 }}
                 >
+                      {/* Aviso destacado de verificación de datos */}
+                <div className="mb-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] text-amber-900">
+                  <p className="font-semibold">
+                    🔔 Verifica tus datos antes de confirmar
+                  </p>
+                  <p className="mt-1">
+                    Asegúrate de que tu número de Nequi o tu llave Bre-B sean correctos.{" "}
+                    <span className="font-semibold">
+                      ChangeWLD no se hace responsable por pagos enviados a cuentas o
+                      llaves ingresadas de forma incorrecta por el usuario.
+                    </span>
+                  </p>
+                </div>
                   <p className="text-center text-gray-500 mb-4">
                     Ingresa los datos donde recibirás los COP.
                   </p>
@@ -856,15 +869,6 @@ function App() {
     {formatCOP(montoWLD * rate?.wld_cop_usuario || 0)} COP
   </span>
 </div>
-
-<p className="mt-2 text-[11px] text-gray-500">
-  Antes de confirmar, verifica cuidadosamente que tu número de Nequi o tu
-  llave Bre-B sean correctos.{" "}
-  <span className="font-semibold">
-    ChangeWLD no se hace responsable por pagos enviados a cuentas o llaves
-    ingresadas de forma incorrecta por el usuario.
-  </span>
-</p>
 
 <p className="mt-3 text-[11px] text-gray-500">
   Al crear tu orden aceptas los{" "}
