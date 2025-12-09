@@ -31,7 +31,7 @@ export default function BankSelector({ value, onChange }) {
           <div className="flex items-center gap-3">
             <img
               src={selected.logo}
-              className="w-7 h-7 rounded-full border border-yellow-400/60 bg-black object-contain"
+              className="w-7 h-7 rounded-full border border-yellow-400/60 bg-white object-contain"
               alt={selected.name}
             />
             <span className="font-medium text-gray-100">{selected.name}</span>
