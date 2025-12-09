@@ -63,7 +63,7 @@ export default function BankSelector({ value, onChange }) {
               >
                 <img
                   src={bank.logo}
-                  className="w-8 h-8 rounded-full border border-yellow-400/60 bg-black object-contain"
+                  className="w-8 h-8 rounded-full border border-yellow-400/60 bg-white object-contain"
                   alt={bank.name}
                 />
                 <span className="text-gray-100">{bank.name}</span>
