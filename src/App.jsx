@@ -664,7 +664,7 @@ function App() {
 
                   <div className="mb-3">
                     <label className="block text-sm text-gray-200 mb-1">
-                      Monto en WLD (mínimo 1 WLD)
+                      Monto en WLD
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -925,7 +925,7 @@ function App() {
                     </button>
                     <button
                       onClick={handleStep2}
-                      className="w-2/3 bg-green-500 text-black py-3 rounded-xl font-semibold hover:bg-green-400"
+                      className="w-2/3 bg-yellow-400 text-black py-3 rounded-xl font-semibold hover:bg-yellow-500"
                     >
                       Crear orden
                     </button>
