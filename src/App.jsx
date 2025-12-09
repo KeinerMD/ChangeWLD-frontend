@@ -919,7 +919,7 @@ function App() {
                   <div className="flex gap-3 mt-4">
                     <button
                       onClick={() => setStep(1)}
-                      className="w-1/3 border border-neutral-600 text-gray-200 py-3 rounded-xl"
+                      className="w-1/3 border border-yellow-500/40 text-yellow-300 py-3 rounded-xl"
                     >
                       Volver
                     </button>
@@ -1002,7 +1002,7 @@ function App() {
                       lastTxIdRef.current = null;
                       window.scrollTo({ top: 0, behavior: "smooth" });
                     }}
-                    className="mt-3 w-full border border-neutral-600 text-gray-200 py-3 rounded-xl"
+                    className="mt-3 w-full border border-yellow-500/40 text-yellow-300 py-3 rounded-xl font-semibold bg-neutral-900"
                   >
                     Crear una nueva orden
                   </button>
