@@ -734,29 +734,12 @@ function App() {
                     </p>
                   </div>
 
-                  {/* Estado único de conexión (SIN mostrar address) */}
-                  <div className="mt-4 text-xs text-center">
-                    <p className="text-gray-300">
-                      Estado de conexión:{" "}
-                      {isVerified ? (
-                        <span className="text-green-400 font-semibold">
-                          ✔ Cuenta de World App conectada
-                        </span>
-                      ) : authError ? (
-                        <span className="text-red-500 font-semibold">
-                          {authError}
-                        </span>
-                      ) : authLoading ? (
-                        <span className="text-yellow-300 font-semibold">
-                          Conectando con tu World App...
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">
-                          Preparando conexión con World App...
-                        </span>
-                      )}
+                  {/* Mensaje mientras se conecta (solo durante la carga) */}
+                  {authLoading && !isVerified && !authError && (
+                    <p className="mt-4 text-xs text-center text-yellow-300">
+                      Conectando con tu World App...
                     </p>
-                  </div>
+                  )}
 
                   {authError && (
                     <p className="mt-3 text-xs text-center text-red-500">
