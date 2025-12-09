@@ -5,6 +5,8 @@ import { API_BASE } from "../apiConfig";
 import Swal from "sweetalert2";
 import { motion, AnimatePresence } from "framer-motion";
 
+const HOUSE_SPREAD = 0.15; // debe coincidir con SPREAD del backend (ej: 0.15)
+
 function AdminPage() {
   const [pin, setPin] = useState("");
   const [token, setToken] = useState("");
@@ -87,45 +89,44 @@ function AdminPage() {
   };
 
   // ===== CARGAR ÓRDENES (usa JWT en Authorization) =====
-const loadOrders = async (silent = false, customToken) => {
-  try {
-    if (!silent) setLoading(true);
+  const loadOrders = async (silent = false, customToken) => {
+    try {
+      if (!silent) setLoading(true);
 
-    const authToken = customToken || token;
-    if (!authToken) {
-      throw new Error("Sin token de admin");
+      const authToken = customToken || token;
+      if (!authToken) {
+        throw new Error("Sin token de admin");
+      }
+
+      const res = await axios.get(`${API_BASE}/api/orders-admin`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      setOrders(Array.isArray(res.data) ? res.data : []);
+      setAuthed(true);
+    } catch (err) {
+      console.error(err);
+
+      // 👉 si hay error 401/403 limpiamos la sesión completa
+      if (err.response && [401, 403].includes(err.response.status)) {
+        setAuthed(false);
+        setToken("");
+        localStorage.removeItem("changewld_admin_token");
+      }
+
+      if (!silent) {
+        Swal.fire(
+          "Error",
+          "Sesión inválida o servidor no disponible",
+          "error"
+        );
+      }
+    } finally {
+      if (!silent) setLoading(false);
     }
-
-    const res = await axios.get(`${API_BASE}/api/orders-admin`, {
-      headers: {
-        Authorization: `Bearer ${authToken}`,
-      },
-    });
-
-    setOrders(Array.isArray(res.data) ? res.data : []);
-    setAuthed(true);
-  } catch (err) {
-    console.error(err);
-
-    // 👉 si hay error 401/403 limpiamos la sesión completa
-    if (err.response && [401, 403].includes(err.response.status)) {
-      setAuthed(false);
-      setToken("");
-      localStorage.removeItem("changewld_admin_token");
-    }
-
-    if (!silent) {
-      Swal.fire(
-        "Error",
-        "Sesión inválida o servidor no disponible",
-        "error"
-      );
-    }
-  } finally {
-    if (!silent) setLoading(false);
-  }
-};
-
+  };
 
   // ===== LOGIN: pedir PIN, recibir JWT =====
   const handleLogin = async () => {
@@ -275,11 +276,40 @@ const loadOrders = async (silent = false, customToken) => {
     });
   };
 
-  const isInDateFilter = (orden) => {
-    if (!orden.creada_en) return true;
-    const created = new Date(orden.creada_en).getTime();
-    if (Number.isNaN(created)) return true;
+  // ===== FECHA DE INVENTARIO (usa inventario_fecha del backend) =====
+  const getInventoryDate = (orden) => {
+    // Preferir inventario_fecha (YYYY-MM-DD)
+    if (orden.inventario_fecha) {
+      return new Date(orden.inventario_fecha + "T00:00:00");
+    }
+    if (orden.creada_en) return new Date(orden.creada_en);
+    if (orden.actualizada_en) return new Date(orden.actualizada_en);
+    return null;
+  };
 
+  // ===== GANANCIA POR ORDEN =====
+  const computeGananciaOrden = (o) => {
+    // Si backend ya envía ganancia_cop, usarla
+    if (o.ganancia_cop != null) {
+      const g = Number(o.ganancia_cop);
+      if (Number.isFinite(g)) return g;
+    }
+
+    // Fallback: calcular desde montoCOP y spread
+    const montoCOP = Number(o.montoCOP || 0);
+    const s = HOUSE_SPREAD;
+    if (!montoCOP || !Number.isFinite(montoCOP) || s <= 0 || s >= 1) return 0;
+
+    // ganancia = montoUsuario * s / (1 - s)
+    return (montoCOP * s) / (1 - s);
+  };
+
+  // ===== FILTRO POR FECHA (INVENTARIO) =====
+  const isInDateFilter = (orden) => {
+    const d = getInventoryDate(orden);
+    if (!d || Number.isNaN(d.getTime())) return true;
+
+    const created = d.getTime();
     const now = Date.now();
     const oneDay = 24 * 60 * 60 * 1000;
 
@@ -316,12 +346,15 @@ const loadOrders = async (silent = false, customToken) => {
   const filteredOrders = useMemo(() => {
     let list = [...orders];
 
+    // filtro por estado
     if (statusFilter !== "all") {
       list = list.filter((o) => o.estado === statusFilter);
     }
 
+    // filtro por fecha de inventario
     list = list.filter((o) => isInDateFilter(o));
 
+    // búsqueda por texto
     if (searchTerm.trim()) {
       const q = searchTerm.trim().toLowerCase();
       list = list.filter((o) => {
@@ -340,6 +373,7 @@ const loadOrders = async (silent = false, customToken) => {
       });
     }
 
+    // ordenar por fecha de creación
     list.sort((a, b) => {
       const da = new Date(a.creada_en || a.actualizada_en || 0).getTime();
       const db = new Date(b.creada_en || b.actualizada_en || 0).getTime();
@@ -353,13 +387,16 @@ const loadOrders = async (silent = false, customToken) => {
     const map = {};
 
     filteredOrders.forEach((o) => {
-      const key = o.creada_en
-        ? new Date(o.creada_en).toDateString()
-        : "sin-fecha";
+      const d = getInventoryDate(o);
+      const key = d ? d.toDateString() : "sin-fecha";
+      const isoForLabel =
+        o.inventario_fecha ||
+        (d ? d.toISOString() : o.creada_en || o.actualizada_en);
+
       if (!map[key]) {
         map[key] = {
           dateKey: key,
-          display: formatDateOnly(o.creada_en),
+          display: formatDateOnly(isoForLabel),
           orders: [],
         };
       }
@@ -369,34 +406,56 @@ const loadOrders = async (silent = false, customToken) => {
     const groups = Object.values(map);
 
     groups.sort((a, b) => {
-      const da = new Date(a.orders[0]?.creada_en || 0).getTime();
-      const db = new Date(b.orders[0]?.creada_en || 0).getTime();
-      return db - da;
+      const da = getInventoryDate(a.orders[0])?.getTime() || 0;
+      const db = getInventoryDate(b.orders[0])?.getTime() || 0;
+      return db - da; // más reciente primero
     });
 
     return groups.map((g) => {
       const byStatus = {};
+      let sumWld = 0;
+      let sumCop = 0;
+      let sumGan = 0;
+
       g.orders.forEach((o) => {
         if (!byStatus[o.estado]) byStatus[o.estado] = [];
         byStatus[o.estado].push(o);
+
+        sumWld += Number(o.montoWLD || 0);
+        sumCop += Number(o.montoCOP || 0);
+        sumGan += computeGananciaOrden(o);
       });
-      return { ...g, byStatus };
+
+      return {
+        ...g,
+        byStatus,
+        totals: {
+          wld: sumWld,
+          cop: sumCop,
+          ganancia: sumGan,
+        },
+      };
     });
   }, [filteredOrders]);
 
   // ===== ESTADÍSTICAS =====
   const stats = useMemo(() => {
-    const todayStr = new Date().toDateString();
+    const today = new Date();
+    const todayKey = today.toDateString();
+
     let totalToday = 0;
     let totalWldToday = 0;
     let totalCopToday = 0;
+    let totalGananciaHoy = 0;
 
     orders.forEach((o) => {
-      const dStr = new Date(o.creada_en || 0).toDateString();
-      if (dStr === todayStr) {
+      const d = getInventoryDate(o);
+      if (!d) return;
+      if (d.toDateString() === todayKey) {
         totalToday += 1;
         totalWldToday += Number(o.montoWLD || 0);
         totalCopToday += Number(o.montoCOP || 0);
+        totalGananciaHoy += computeGananciaOrden(o);
       }
     });
 
@@ -409,6 +468,7 @@ const loadOrders = async (silent = false, customToken) => {
       totalToday,
       totalWldToday,
       totalCopToday,
+      totalGananciaHoy,
       totalPendientes,
       totalPagadas,
     };
@@ -497,7 +557,7 @@ const loadOrders = async (silent = false, customToken) => {
         {/* STATS */}
         <section className="grid gap-3 md:grid-cols-4">
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
-            <p className="text-xs text-slate-400 mb-1">Órdenes de hoy</p>
+            <p className="text-xs text-slate-400 mb-1">Órdenes (inventario de hoy)</p>
             <p className="text-2xl font-bold text-white">
               {stats.totalToday}
               <span className="text-xs text-slate-500 ml-1">orden(es)</span>
@@ -511,10 +571,18 @@ const loadOrders = async (silent = false, customToken) => {
             </p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
-            <p className="text-xs text-slate-400 mb-1">COP enviados hoy</p>
+            <p className="text-xs text-slate-400 mb-1">
+              COP enviados hoy (inventario)
+            </p>
             <p className="text-2xl font-bold text-emerald-300">
               {stats.totalCopToday.toLocaleString("es-CO")}
               <span className="text-xs text-slate-500 ml-1">COP</span>
+            </p>
+            <p className="text-[11px] text-amber-300 mt-1">
+              Ganancia estimada hoy:{" "}
+              <span className="font-semibold">
+                {stats.totalGananciaHoy.toLocaleString("es-CO")} COP
+              </span>
             </p>
           </div>
           <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 flex flex-col justify-between">
@@ -551,6 +619,7 @@ const loadOrders = async (silent = false, customToken) => {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 text-xs md:text-[11px]">
+            {/* Filtro por estado */}
             <select
               className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none"
               value={statusFilter}
@@ -564,15 +633,16 @@ const loadOrders = async (silent = false, customToken) => {
               <option value="rechazada">Rechazada</option>
             </select>
 
+            {/* Filtro por fecha de inventario */}
             <select
               className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
             >
-              <option value="today">Hoy</option>
-              <option value="yesterday">Ayer</option>
-              <option value="7d">Últimos 7 días</option>
-              <option value="all">Todas las fechas</option>
+              <option value="today">Inventario: Hoy</option>
+              <option value="yesterday">Inventario: Ayer</option>
+              <option value="7d">Inventario: Últimos 7 días</option>
+              <option value="all">Inventario: Todas las fechas</option>
             </select>
 
             <button
@@ -607,16 +677,23 @@ const loadOrders = async (silent = false, customToken) => {
                 className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden"
               >
                 {/* HEADER DE DÍA */}
-                <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                <div className="px-4 py-3 border-b border-slate-800 flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-slate-400 text-sm">📅</span>
-                    <h2 className="text-sm font-semibold text-slate-100">
-                      {group.display}
-                    </h2>
+                    <div>
+                      <h2 className="text-sm font-semibold text-slate-100">
+                        {group.display} — Inventario
+                      </h2>
+                      <p className="text-[11px] text-slate-400">
+                        {group.orders.length} orden(es) ·{" "}
+                        {group.totals.wld.toFixed(4)} WLD ·{" "}
+                        {group.totals.cop.toLocaleString("es-CO")} COP · Ganancia:{" "}
+                        <span className="text-amber-300 font-semibold">
+                          {group.totals.ganancia.toLocaleString("es-CO")} COP
+                        </span>
+                      </p>
+                    </div>
                   </div>
-                  <span className="text-xs text-slate-400">
-                    {group.orders.length} orden(es)
-                  </span>
                 </div>
 
                 {/* AGRUPADO POR ESTADO */}
