@@ -8,6 +8,7 @@ import BankSelector from "./components/BankSelector";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { WLD_ABI } from "./wldAbi";
 import OrderSearch from "./components/OrderSearch"; // 👈 IMPORTANTE
+import ScheduleBanner from "./components/ScheduleBanner"; // 👈 RUTA CORRECTA
 
 // 👉 Soporte Whatsapp
 const SUPPORT_WHATSAPP = "573123146293";
@@ -599,13 +600,18 @@ function App() {
         className="bg-neutral-900 shadow-2xl rounded-3xl p-7 w-full max-w-md box-border border border-yellow-500/20"
       >
         {/* HEADER */}
-        <div className="mb-5 text-center">
+        <div className="mb-3 text-center">
           <h1 className="text-3xl font-bold text-yellow-400 mb-1">
             💱 ChangeWLD
           </h1>
           <p className="text-xs text-gray-300 uppercase tracking-widest">
             Cambia tus WLD a COP de forma segura
           </p>
+        </div>
+
+        {/* 🔔 Banner de horarios / inventario diario */}
+        <div className="mb-5">
+          <ScheduleBanner />
         </div>
 
         {view === "search" ? (
