@@ -138,6 +138,28 @@ function TermsContent() {
   );
 }
 
+        {/* HORARIOS (solo información, sin mostrar abierto/cerrado) */}
+        <div className="mb-5 text-[11px] text-gray-200 bg-neutral-800/70 border border-neutral-700 rounded-xl p-3 space-y-1">
+          <p className="font-semibold text-yellow-300 text-xs">
+            ⏰ Horarios de atención
+          </p>
+          <p>Lunes a viernes: 9:00 a.m. – 5:00 p.m.</p>
+          <p>Sábados: 9:00 a.m. – 3:00 p.m.</p>
+          <p>Domingos: sin atención.</p>
+          <p className="pt-1 text-[10px] text-gray-400 leading-snug">
+            Los pagos normalmente son inmediatos, pero pueden tardar hasta{" "}
+            <span className="font-semibold text-yellow-200">30 minutos</span>{" "}
+            dentro del horario hábil.
+            <br />
+            Las órdenes creadas fuera de este horario se procesan el{" "}
+            <span className="font-semibold text-yellow-200">
+              siguiente día hábil
+            </span>
+            .
+          </p>
+        </div>
+
+
 function App() {
   const [view, setView] = useState("main"); // "main" | "search"
 
@@ -147,6 +169,7 @@ function App() {
   const [orderId, setOrderId] = useState(null);
   const [orderInfo, setOrderInfo] = useState(null);
   const [hasShownPaidAlert, setHasShownPaidAlert] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
 
   // 🔐 Estado combinado: identidad + billetera (una sola aprobación)
   const [isVerified, setIsVerified] = useState(false);
@@ -608,25 +631,16 @@ function App() {
           </p>
         </div>
         {/* HORARIOS (solo información, sin mostrar abierto/cerrado) */}
-        <div className="mb-5 text-[11px] text-gray-200 bg-neutral-800/70 border border-neutral-700 rounded-xl p-3 space-y-1">
-          <p className="font-semibold text-yellow-300 text-xs">
-            ⏰ Horarios de atención
-          </p>
-          <p>Lunes a viernes: 9:00 a.m. – 5:00 p.m.</p>
-          <p>Sábados: 9:00 a.m. – 3:00 p.m.</p>
-          <p>Domingos: sin atención.</p>
-          <p className="pt-1 text-[10px] text-gray-400 leading-snug">
-            Los pagos normalmente son inmediatos, pero pueden tardar hasta{" "}
-            <span className="font-semibold text-yellow-200">30 minutos</span>{" "}
-            dentro del horario hábil.
-            <br />
-            Las órdenes creadas fuera de este horario se procesan el{" "}
-            <span className="font-semibold text-yellow-200">
-              siguiente día hábil
-            </span>
-            .
-          </p>
-        </div>
+  <p>
+    <button
+      type="button"
+      onClick={() => setShowSchedule(true)}
+      className="underline text-yellow-300"
+    >
+      Horarios de atención
+    </button>{" "}
+    y límite diario de órdenes.
+  </p>
 
         {view === "search" ? (
           <OrderSearch
@@ -1032,6 +1046,24 @@ function App() {
             </div>
           </div>
         )}
+                {/* MODAL HORARIOS DE ATENCIÓN */}
+        {showSchedule && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+            <div className="bg-neutral-900 text-gray-100 rounded-2xl max-h-[80vh] w-full max-w-md p-4 overflow-y-auto border border-yellow-500/30">
+              <h2 className="text-base font-bold mb-2 text-gray-100">
+                Horarios de atención y límite diario
+              </h2>
+              <ScheduleContent />
+              <button
+                onClick={() => setShowSchedule(false)}
+                className="mt-4 w-full bg-yellow-400 text-black py-2 rounded-xl text-sm font-semibold hover:bg-yellow-500"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
+
       </motion.div>
     </div>
   );
