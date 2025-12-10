@@ -138,27 +138,54 @@ function TermsContent() {
   );
 }
 
-        {/* HORARIOS (solo información, sin mostrar abierto/cerrado) */}
-        <div className="mb-5 text-[11px] text-gray-200 bg-neutral-800/70 border border-neutral-700 rounded-xl p-3 space-y-1">
-          <p className="font-semibold text-yellow-300 text-xs">
-            ⏰ Horarios de atención
-          </p>
-          <p>Lunes a viernes: 9:00 a.m. – 5:00 p.m.</p>
-          <p>Sábados: 9:00 a.m. – 3:00 p.m.</p>
-          <p>Domingos: sin atención.</p>
-          <p className="pt-1 text-[10px] text-gray-400 leading-snug">
-            Los pagos normalmente son inmediatos, pero pueden tardar hasta{" "}
-            <span className="font-semibold text-yellow-200">30 minutos</span>{" "}
-            dentro del horario hábil.
-            <br />
-            Las órdenes creadas fuera de este horario se procesan el{" "}
-            <span className="font-semibold text-yellow-200">
-              siguiente día hábil
-            </span>
-            .
-          </p>
-        </div>
+// ⏰ Contenido del modal de horarios
+function ScheduleContent() {
+  return (
+    <div className="text-xs text-gray-200 space-y-3">
+      <div>
+        <p className="font-semibold text-yellow-300 text-sm">
+          ⏰ Horarios de atención
+        </p>
+        <ul className="list-disc list-inside space-y-1 mt-1">
+          <li>Lunes a viernes: 9:00 a.m. – 5:00 p.m.</li>
+          <li>Sábados: 9:00 a.m. – 3:00 p.m.</li>
+          <li>Domingos: sin atención.</li>
+        </ul>
+      </div>
 
+      <div>
+        <p>
+          Los pagos normalmente son{" "}
+          <span className="font-semibold text-yellow-200">inmediatos</span>, pero
+          pueden tardar hasta{" "}
+          <span className="font-semibold text-yellow-200">30 minutos</span>{" "}
+          dentro del horario hábil.
+        </p>
+        <p className="mt-1">
+          Las órdenes creadas{" "}
+          <span className="font-semibold text-yellow-200">
+            fuera de este horario
+          </span>{" "}
+          se procesan el{" "}
+          <span className="font-semibold text-yellow-200">
+            siguiente día hábil
+          </span>
+          .
+        </p>
+      </div>
+
+      <div>
+        <p>
+          Puedes crear hasta{" "}
+          <span className="font-semibold text-yellow-200">
+            3 órdenes por día
+          </span>{" "}
+          con tu cuenta de World App.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [view, setView] = useState("main"); // "main" | "search"
@@ -630,17 +657,18 @@ function App() {
             Cambia tus WLD a COP de forma segura
           </p>
         </div>
-        {/* HORARIOS (solo información, sin mostrar abierto/cerrado) */}
-  <p>
-    <button
-      type="button"
-      onClick={() => setShowSchedule(true)}
-      className="underline text-yellow-300"
-    >
-      Horarios de atención
-    </button>{" "}
-    y límite diario de órdenes.
-  </p>
+
+        {/* Botón bonito para horarios de atención */}
+        <div className="mb-4 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowSchedule(true)}
+            className="inline-flex items-center gap-2 text-[11px] px-3 py-1.5 rounded-full border border-yellow-400/70 bg-black/30 text-yellow-200 hover:bg-yellow-400/10 transition-colors"
+          >
+            <span>⏰</span>
+            <span className="underline">Horarios de atención</span>
+          </button>
+        </div>
 
         {view === "search" ? (
           <OrderSearch
@@ -683,15 +711,6 @@ function App() {
                   exit={{ opacity: 0, x: -40 }}
                   transition={{ duration: 0.25 }}
                 >
-                  {/* Aviso de límite diario */}
-                  <div className="mb-3 rounded-xl border border-yellow-500/60 bg-yellow-500/10 px-3 py-2 text-[11px] text-yellow-200 text-center">
-                    Puedes crear hasta{" "}
-                    <span className="font-bold text-yellow-300">
-                      3 órdenes por día
-                    </span>{" "}
-                    con tu cuenta de World App.
-                  </div>
-
                   <p className="text-center text-gray-300 mb-4">
                     Ingresa cuántos <b>WLD</b> quieres cambiar.
                   </p>
@@ -1046,7 +1065,8 @@ function App() {
             </div>
           </div>
         )}
-                {/* MODAL HORARIOS DE ATENCIÓN */}
+
+        {/* MODAL HORARIOS DE ATENCIÓN */}
         {showSchedule && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
             <div className="bg-neutral-900 text-gray-100 rounded-2xl max-h-[80vh] w-full max-w-md p-4 overflow-y-auto border border-yellow-500/30">
@@ -1063,7 +1083,6 @@ function App() {
             </div>
           </div>
         )}
-
       </motion.div>
     </div>
   );
