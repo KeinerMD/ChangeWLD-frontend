@@ -8,7 +8,6 @@ import BankSelector from "./components/BankSelector";
 import { MiniKit } from "@worldcoin/minikit-js";
 import { WLD_ABI } from "./wldAbi";
 import OrderSearch from "./components/OrderSearch"; // 👈 IMPORTANTE
-import ScheduleBanner from "./components/ScheduleBanner"; // 👈 RUTA CORRECTA
 
 // 👉 Soporte Whatsapp
 const SUPPORT_WHATSAPP = "573123146293";
@@ -608,10 +607,25 @@ function App() {
             Cambia tus WLD a COP de forma segura
           </p>
         </div>
-
-        {/* 🔔 Banner de horarios / inventario diario */}
-        <div className="mb-5">
-          <ScheduleBanner />
+        {/* HORARIOS (solo información, sin mostrar abierto/cerrado) */}
+        <div className="mb-5 text-[11px] text-gray-200 bg-neutral-800/70 border border-neutral-700 rounded-xl p-3 space-y-1">
+          <p className="font-semibold text-yellow-300 text-xs">
+            ⏰ Horarios de atención
+          </p>
+          <p>Lunes a viernes: 9:00 a.m. – 5:00 p.m.</p>
+          <p>Sábados: 9:00 a.m. – 3:00 p.m.</p>
+          <p>Domingos: sin atención.</p>
+          <p className="pt-1 text-[10px] text-gray-400 leading-snug">
+            Los pagos normalmente son inmediatos, pero pueden tardar hasta{" "}
+            <span className="font-semibold text-yellow-200">30 minutos</span>{" "}
+            dentro del horario hábil.
+            <br />
+            Las órdenes creadas fuera de este horario se procesan el{" "}
+            <span className="font-semibold text-yellow-200">
+              siguiente día hábil
+            </span>
+            .
+          </p>
         </div>
 
         {view === "search" ? (
