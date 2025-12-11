@@ -242,85 +242,102 @@ function App() {
   const isNequi = bankData.banco === "Nequi";
   const isLlaveBreB = bankData.banco === "Llave Bre-B";
 
-  // ========= ENVÍO DE WLD (sendTransaction) =========
-  const sendWldToDestination = async (amountWLD) => {
-    if (!MiniKit.isInstalled()) {
-      await Swal.fire(
-        "Abre ChangeWLD desde World App",
-        "La transferencia solo funciona dentro de la mini app en World App.",
-        "warning"
-      );
-      return null;
-    }
+// ========= ENVÍO DE WLD (sendTransaction) =========
+const sendWldToDestination = async (amountWLD) => {
+  if (!MiniKit.isInstalled()) {
+    await Swal.fire(
+      "Abre ChangeWLD desde World App",
+      "La transferencia solo funciona dentro de la mini app en World App.",
+      "warning"
+    );
+    return null;
+  }
 
-    const tokenAddress = import.meta.env.VITE_WLD_TOKEN_ADDRESS;
-    const destination = import.meta.env.VITE_WLD_DESTINATION;
+  const tokenAddress = import.meta.env.VITE_WLD_TOKEN_ADDRESS;
+  const destination = import.meta.env.VITE_WLD_DESTINATION;
 
-    if (!tokenAddress || !destination) {
-      console.error(
-        "Falta VITE_WLD_TOKEN_ADDRESS o VITE_WLD_DESTINATION en el .env del frontend"
-      );
+  if (!tokenAddress || !destination) {
+    console.error(
+      "Falta VITE_WLD_TOKEN_ADDRESS o VITE_WLD_DESTINATION en el .env del frontend"
+    );
+    await Swal.fire(
+      "Error de configuración",
+      "Faltan direcciones en la configuración. Contacta al soporte de ChangeWLD.",
+      "error"
+    );
+    return null;
+  }
+
+  const amountWei = toTokenUnits(String(amountWLD), 18);
+
+  try {
+    Swal.fire({
+      title: "Firmando en World App...",
+      text: "Confirma la transferencia de WLD a ChangeWLD.",
+      allowOutsideClick: false,
+      didOpen: () => Swal.showLoading(),
+    });
+
+    const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
+      transaction: [
+        {
+          address: tokenAddress,
+          abi: WLD_ABI,
+          functionName: "transfer",
+          args: [destination, amountWei.toString()],
+        },
+      ],
+    });
+
+    Swal.close();
+
+    if (!finalPayload || finalPayload.status === "error") {
+      console.error("Error en sendTransaction:", finalPayload);
       await Swal.fire(
-        "Error de configuración",
-        "Faltan direcciones en la configuración. Contacta al soporte de ChangeWLD.",
+        "Transferencia cancelada",
+        "World App no pudo completar la transferencia de WLD.",
         "error"
       );
       return null;
     }
 
-    const amountWei = toTokenUnits(String(amountWLD), 18);
+    // 👇 Obtenemos un hash de transacción útil para el backend
+    const txHash =
+      finalPayload.transaction_hash ||
+      finalPayload.tx_hash ||
+      finalPayload.transaction_id || // fallback
+      null;
 
-    try {
-      Swal.fire({
-        title: "Firmando en World App...",
-        text: "Confirma la transferencia de WLD a ChangeWLD.",
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading(),
-      });
+    console.log("✅ Transacción enviada:", finalPayload, "txHash:", txHash);
 
-      const { finalPayload } = await MiniKit.commandsAsync.sendTransaction({
-        transaction: [
-          {
-            address: tokenAddress,
-            abi: WLD_ABI,
-            functionName: "transfer",
-            args: [destination, amountWei.toString()],
-          },
-        ],
-      });
-
-      Swal.close();
-
-      if (finalPayload.status === "error") {
-        console.error("Error en sendTransaction:", finalPayload);
-        await Swal.fire(
-          "Transferencia cancelada",
-          "World App no pudo completar la transferencia de WLD.",
-          "error"
-        );
-        return null;
-      }
-
-      console.log("✅ Transacción enviada:", finalPayload);
-
+    if (!txHash) {
       await Swal.fire(
-        "WLD enviados",
-        "La transacción fue enviada. En unos segundos deberías ver los WLD en la wallet destino.",
-        "success"
-      );
-
-      return finalPayload.transaction_id || null;
-    } catch (err) {
-      Swal.close();
-      console.error("Error inesperado en sendWldToDestination:", err);
-      await Swal.fire(
-        "Error al enviar WLD",
-        "No se pudo iniciar la transacción en World App.",
+        "Error",
+        "No se pudo leer el identificador de la transacción de World App.",
         "error"
       );
       return null;
     }
-  };
+
+    await Swal.fire(
+      "WLD enviados",
+      "La transacción fue enviada. En unos segundos deberías ver los WLD en la wallet destino.",
+      "success"
+    );
+
+    return txHash;
+  } catch (err) {
+    Swal.close();
+    console.error("Error inesperado en sendWldToDestination:", err);
+    await Swal.fire(
+      "Error al enviar WLD",
+      "No se pudo iniciar la transacción en World App.",
+      "error"
+    );
+    return null;
+  }
+};
+
 
   // ========= AUTO: UNA SOLA APROBACIÓN (walletAuth) AL ABRIR LA MINI APP =========
   useEffect(() => {
